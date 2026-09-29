@@ -1,3 +1,37 @@
 spring:
   application:
     name: fuelcast-core
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/fuelcast
+    username: fuelcast
+    password: 123456
+
+  jpa:
+    hibernate:
+      # Flyway giữ quyền tạo bảng. Hibernate chỉ được validate, không được tự sửa schema.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: Asia/Ho_Chi_Minh
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+
+logging:
+  level:
+    vn.fuelcast: DEBUG
+
+fuelcast:
+  # Bật bằng: --fuelcast.import.csv=đường/dẫn/spike_result.csv
+  import:
+    csv: ""

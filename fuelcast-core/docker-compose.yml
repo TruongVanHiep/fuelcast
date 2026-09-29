@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: fuelcast-db
+    environment:
+      POSTGRES_DB: fuelcast
+      POSTGRES_USER: fuelcast
+      POSTGRES_PASSWORD: 123456
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "5433:5432"
+    volumes:
+      - fuelcast-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fuelcast -d fuelcast"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  fuelcast-pgdata:
