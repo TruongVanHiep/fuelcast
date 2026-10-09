@@ -4,6 +4,7 @@ import fitiuh.com.fuelcast_core.entity.*;
 import fitiuh.com.fuelcast_core.repository.FuelProductRepository;
 import fitiuh.com.fuelcast_core.repository.PricePublisherRepository;
 import fitiuh.com.fuelcast_core.repository.RetailPriceRepository;
+import fitiuh.com.fuelcast_core.service.parser.ParsedBulletin;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.slf4j.Logger;
@@ -52,9 +53,7 @@ public class PriceImportService {
         Map<String, FuelProduct> productByCode = new HashMap<>();
         products.findAll().forEach(p -> productByCode.put(p.getCode(), p));
 
-        PricePublisher moit = publishers.findByCode(PUBLISHER_CODE).orElseThrow(
-                () -> new IllegalStateException("Thiếu price_publisher '" + PUBLISHER_CODE
-                        + "' — migration V2 đã chạy chưa?"));
+        PricePublisher moit = requireMoit();
 
         int inserted = 0;
         int skippedExisting = 0;
@@ -82,19 +81,15 @@ public class PriceImportService {
             OffsetDateTime observedAt = LocalDateTime.parse(f[0]).atZone(VN).toOffsetDateTime();
             AdjustmentCycle cycle = cycleService.findOrCreateAdjustmentCycle(observedAt);
 
-            RetailPriceId id = new RetailPriceId(
-                    observedAt, productByCode.get(code).getId(), moit.getId(), REGION_1);
-            if (prices.existsById(id)) {
-                skippedExisting++;
-                continue;
-            }
-
-            prices.save(new RetailPrice(
-                    id,
+            boolean isNew = insertIfAbsent(observedAt, productByCode.get(code), moit,
                     new BigDecimal(f[2]),
                     f[4].isBlank() ? null : new BigDecimal(f[4]),
-                    cycle.getId()));
-            inserted++;
+                    cycle);
+            if (isNew) {
+                inserted++;
+            } else {
+                skippedExisting++;
+            }
         }
 
         log.info("Nạp CSV xong: {} dòng mới, {} dòng đã có, {} dòng không nhận ra mặt hàng",
@@ -102,6 +97,67 @@ public class PriceImportService {
 
         return new ImportResult(inserted, skippedExisting, unrecognised,
                 unknownNames, cycleService.count());
+    }
+
+    /**
+     * Ghi giá của một bản tin đã parse. Cùng khoá tự nhiên với đường nạp CSV nên
+     * một kỳ đã có từ CSV sẽ được bỏ qua chứ không nhân đôi.
+     *
+     * @Transactional bao cả bản tin: lỗi ở mặt hàng thứ ba thì hai mặt hàng đầu
+     * cũng bị huỷ, để không bao giờ có một kỳ giá chỉ ghi được một nửa.
+     */
+    @Transactional
+    public ImportResult importBulletin(ParsedBulletin bulletin) {
+        if (!bulletin.isUsable()) {
+            throw new IllegalArgumentException(
+                    "Bản tin không dùng được: thiếu ngày hiệu lực hoặc không có giá nào");
+        }
+
+        PricePublisher moit = requireMoit();
+        OffsetDateTime observedAt = bulletin.effectiveAt().atZone(VN).toOffsetDateTime();
+        AdjustmentCycle cycle = cycleService.findOrCreateAdjustmentCycle(observedAt);
+
+        int inserted = 0;
+        int skippedExisting = 0;
+        int unrecognised = 0;
+        Set<String> unknownCodes = new TreeSet<>();
+
+        for (ParsedBulletin.ParsedPrice p : bulletin.prices()) {
+            Optional<FuelProduct> product = products.findByCode(p.productCode());
+            if (product.isEmpty()) {
+                unrecognised++;
+                unknownCodes.add(p.productCode());
+                continue;
+            }
+            BigDecimal delta = p.deltaVnd() == null ? null : BigDecimal.valueOf(p.deltaVnd());
+            if (insertIfAbsent(observedAt, product.get(), moit,
+                    BigDecimal.valueOf(p.priceVnd()), delta, cycle)) {
+                inserted++;
+            } else {
+                skippedExisting++;
+            }
+        }
+
+        return new ImportResult(inserted, skippedExisting, unrecognised,
+                unknownCodes, cycleService.count());
+    }
+
+    /** Trả true nếu đã ghi một dòng mới, false nếu khoá tự nhiên đã tồn tại. */
+    private boolean insertIfAbsent(OffsetDateTime observedAt, FuelProduct product,
+                                   PricePublisher publisher, BigDecimal priceVnd,
+                                   BigDecimal deltaVnd, AdjustmentCycle cycle) {
+        RetailPriceId id = new RetailPriceId(observedAt, product.getId(), publisher.getId(), REGION_1);
+        if (prices.existsById(id)) {
+            return false;
+        }
+        prices.save(new RetailPrice(id, priceVnd, deltaVnd, cycle.getId()));
+        return true;
+    }
+
+    private PricePublisher requireMoit() {
+        return publishers.findByCode(PUBLISHER_CODE).orElseThrow(
+                () -> new IllegalStateException("Thiếu price_publisher '" + PUBLISHER_CODE
+                        + "' — migration V2 đã chạy chưa?"));
     }
 
     /** CSV ở đây đơn giản: chỉ cần xử lý trường bọc trong dấu ngoặc kép. */
