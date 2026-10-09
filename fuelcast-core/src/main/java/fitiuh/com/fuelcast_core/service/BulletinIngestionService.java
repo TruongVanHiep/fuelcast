@@ -37,10 +37,13 @@ public class BulletinIngestionService {
 
     static final String SOURCE = "MOIT_BULLETIN";
 
-    /** Kết quả xử lý một URL. rows là số dòng giá MỚI được ghi. */
+    /** Kết quả xử lý một URL. rows là số dòng MỚI được ghi (giá bán lẻ + giá thế giới). */
     public record Outcome(IngestionStatus status, int rows, String message) { }
 
     public record BackfillResult(int found, int skipped, int succeeded, int failed, List<String> failedUrls) { }
+
+    /** processed bản gốc đã đọc lại; newRows dòng mới ghi; recovered số bản FAILED được cứu. */
+    public record ReprocessResult(int processed, int newRows, int recovered, int failed, List<String> failedUrls) { }
 
     private final MoitBulletinScraper scraper;
     private final MoitBulletinParser parser;
@@ -86,9 +89,10 @@ public class BulletinIngestionService {
             }
 
             PriceImportService.ImportResult result = importer.importBulletin(parsed);
-            run.succeed(result.inserted());
+            int newRows = result.inserted() + result.worldInserted();
+            run.succeed(newRows);
             runs.save(run);
-            return new Outcome(IngestionStatus.SUCCESS, result.inserted(), null);
+            return new Outcome(IngestionStatus.SUCCESS, newRows, null);
 
         } catch (IOException | RuntimeException e) {
             return fail(run, e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -134,6 +138,55 @@ public class BulletinIngestionService {
             }
         }
         return new BackfillResult(links.size(), skipped, succeeded, failedUrls.size(), failedUrls);
+    }
+
+    /**
+     * Parse lại mọi bản gốc đã lưu và nạp lại giá, KHÔNG gửi request nào tới
+     * MOIT. Dùng khi parser vừa được sửa hoặc mở rộng: bản FAILED có thể được
+     * cứu, và bản SUCCESS cũ được bổ sung phần dữ liệu parser mới đọc được (như
+     * giá thế giới). Idempotent nhờ khoá tự nhiên, chạy bao nhiêu lần cũng được.
+     *
+     * Một bản đang SUCCESS mà parse lại thất bại là dấu hiệu parser bị hồi quy:
+     * được tính vào failed và báo ra, nhưng KHÔNG bị hạ trạng thái, vì dữ liệu
+     * nó đã ghi trước đó vẫn đúng.
+     */
+    public ReprocessResult reprocessStored() {
+        List<Long> ids = runs.findIdsWithRawPayload();
+
+        int newRows = 0;
+        int recovered = 0;
+        List<String> failedUrls = new ArrayList<>();
+
+        for (Long id : ids) {
+            IngestionRun run = runs.findById(id).orElseThrow();
+            boolean wasFailed = run.getStatus() == IngestionStatus.FAILED;
+            try {
+                ParsedBulletin parsed = parser.parse(run.getRawPayload(), run.getTargetUrl());
+                if (!parsed.isUsable()) {
+                    throw new IllegalStateException("Parser không đọc được ngày hiệu lực hoặc giá nào");
+                }
+
+                PriceImportService.ImportResult result = importer.importBulletin(parsed);
+                int rows = result.inserted() + result.worldInserted();
+                newRows += rows;
+
+                if (wasFailed) {
+                    run.succeed(rows);
+                    run.setErrorMessage(null);
+                    runs.save(run);
+                    recovered++;
+                }
+            } catch (RuntimeException e) {
+                String message = e.getClass().getSimpleName() + ": " + e.getMessage();
+                log.warn("Parse lại thất bại {}: {}", run.getTargetUrl(), message);
+                failedUrls.add(run.getTargetUrl());
+                if (wasFailed) {
+                    run.fail(message);          // làm mới lý do lỗi theo parser hiện tại
+                    runs.save(run);
+                }
+            }
+        }
+        return new ReprocessResult(ids.size(), newRows, recovered, failedUrls.size(), failedUrls);
     }
 
     private Outcome fail(IngestionRun run, String message) {
