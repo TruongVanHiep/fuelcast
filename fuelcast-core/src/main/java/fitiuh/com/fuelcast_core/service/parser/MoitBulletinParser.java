@@ -4,7 +4,9 @@ import org.springframework.stereotype.Component;
 
 
 import org.jsoup.Jsoup;
+import java.math.BigDecimal;
 import java.text.Normalizer;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -100,10 +102,19 @@ public class MoitBulletinParser {
         if (!m.find()) {
             return null;
         }
-        return LocalDateTime.of(
+        LocalDate day = LocalDate.of(
                 Integer.parseInt(m.group(5)), Integer.parseInt(m.group(4)),
-                Integer.parseInt(m.group(3)), Integer.parseInt(m.group(1)),
-                Integer.parseInt(m.group(2)));
+                Integer.parseInt(m.group(3)));
+        int hour = Integer.parseInt(m.group(1));
+        int minute = Integer.parseInt(m.group(2));
+
+        // "24 giờ 00" là nửa đêm CUỐI ngày, tức 00:00 ngày kế tiếp. LocalDateTime
+        // không có giờ 24 nên phải đổi tay. Chỉ chấp nhận đúng 24:00: giờ 24
+        // phút 30 hay giờ 25 vẫn phải lỗi, kẻo giờ rác lặng lẽ thành một ngày khác.
+        if (hour == 24 && minute == 0) {
+            return day.plusDays(1).atStartOfDay();
+        }
+        return day.atTime(hour, minute);
     }
 
     private static List<ParsedBulletin.ParsedPrice> findPrices(String text) {
@@ -169,7 +180,7 @@ public class MoitBulletinParser {
     }
 
     /** "94,948" -> 94.948. Bản tin dùng dấu phẩy làm dấu thập phân. */
-    static double parseUsd(String s) {
-        return Double.parseDouble(s.replace(".", "").replace(",", "."));
+    static BigDecimal parseUsd(String s) {
+        return new BigDecimal(s.replace(".", "").replace(",", "."));
     }
 }
