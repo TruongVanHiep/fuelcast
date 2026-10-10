@@ -4,6 +4,7 @@ import fitiuh.com.fuelcast_core.entity.*;
 import fitiuh.com.fuelcast_core.repository.FuelProductRepository;
 import fitiuh.com.fuelcast_core.repository.PricePublisherRepository;
 import fitiuh.com.fuelcast_core.repository.RetailPriceRepository;
+import fitiuh.com.fuelcast_core.repository.WorldPriceRepository;
 import fitiuh.com.fuelcast_core.service.parser.ParsedBulletin;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -38,15 +39,31 @@ public class PriceImportService {
     private static final String PUBLISHER_CODE = "MOIT";
     private static final short REGION_1 = 1;
 
+    /**
+     * Giá thế giới trong bản tin MOIT là TRUNG BÌNH của kỳ điều hành vừa qua
+     * ("bình quân giá thành phẩm giữa kỳ điều hành ngày D1 và ngày D2"), không
+     * phải giá một ngày, và độ dài kỳ không cố định. Gắn nguồn này để không bao
+     * giờ lẫn với giá đóng cửa hằng ngày lấy từ nguồn khác.
+     */
+    static final String WORLD_PRICE_SOURCE = "MOIT_CYCLE_AVG";
+
     FuelProductRepository products;
     PricePublisherRepository publishers;
     RetailPriceRepository prices;
     AdjustmentCycleService cycleService;
     ProductCodeResolver resolver;
+    WorldPriceRepository worldPrices;
 
     /** Kết quả một lần nạp, để người gọi báo cáo lại. */
     public record ImportResult(int inserted, int skippedExisting, int unrecognised,
-                               Set<String> unknownNames, long totalCycles) { }
+                               Set<String> unknownNames, long totalCycles, int worldInserted) {
+
+        /** Đường nạp CSV không có giá thế giới nên không phải truyền số này. */
+        public ImportResult(int inserted, int skippedExisting, int unrecognised,
+                            Set<String> unknownNames, long totalCycles) {
+            this(inserted, skippedExisting, unrecognised, unknownNames, totalCycles, 0);
+        }
+    }
 
     @Transactional
     public ImportResult importCsv(Path csv) throws java.io.IOException {
@@ -138,8 +155,18 @@ public class PriceImportService {
             }
         }
 
+        int worldInserted = 0;
+        for (ParsedBulletin.ParsedWorldPrice w : bulletin.worldPrices()) {
+            WorldPriceId id = new WorldPriceId(observedAt, w.symbol());
+            if (worldPrices.existsById(id)) {
+                continue;
+            }
+            worldPrices.save(new WorldPrice(id, w.valueUsd(), w.unit(), WORLD_PRICE_SOURCE));
+            worldInserted++;
+        }
+
         return new ImportResult(inserted, skippedExisting, unrecognised,
-                unknownCodes, cycleService.count());
+                unknownCodes, cycleService.count(), worldInserted);
     }
 
     /** Trả true nếu đã ghi một dòng mới, false nếu khoá tự nhiên đã tồn tại. */

@@ -5,6 +5,9 @@ import fitiuh.com.fuelcast_core.entity.FuelProduct;
 import fitiuh.com.fuelcast_core.entity.PricePublisher;
 import fitiuh.com.fuelcast_core.entity.RetailPrice;
 import fitiuh.com.fuelcast_core.entity.RetailPriceId;
+import fitiuh.com.fuelcast_core.entity.WorldPrice;
+import fitiuh.com.fuelcast_core.entity.WorldPriceId;
+import fitiuh.com.fuelcast_core.repository.WorldPriceRepository;
 import fitiuh.com.fuelcast_core.repository.FuelProductRepository;
 import fitiuh.com.fuelcast_core.repository.PricePublisherRepository;
 import fitiuh.com.fuelcast_core.repository.RetailPriceRepository;
@@ -44,8 +47,10 @@ class PriceImportServiceTest {
     private final RetailPriceRepository prices = mock(RetailPriceRepository.class);
     private final AdjustmentCycleService cycleService = mock(AdjustmentCycleService.class);
 
+    private final WorldPriceRepository worldPrices = mock(WorldPriceRepository.class);
+
     private final PriceImportService service = new PriceImportService(
-            products, publishers, prices, cycleService, new ProductCodeResolver());
+            products, publishers, prices, cycleService, new ProductCodeResolver(), worldPrices);
 
     @BeforeEach
     void setUp() {
@@ -55,6 +60,7 @@ class PriceImportServiceTest {
                 .thenReturn(AdjustmentCycle.builder().id(10L).build());
         when(cycleService.count()).thenReturn(1L);
         when(prices.existsById(any(RetailPriceId.class))).thenReturn(false);
+        when(worldPrices.existsById(any(WorldPriceId.class))).thenReturn(false);
         when(products.findByCode("E5RON92")).thenReturn(Optional.of(product(1, "E5RON92")));
         when(products.findByCode("RON95")).thenReturn(Optional.of(product(2, "RON95")));
     }
@@ -119,6 +125,50 @@ class PriceImportServiceTest {
         assertThat(result.inserted()).isEqualTo(1);
         assertThat(result.unrecognised()).isEqualTo(1);
         assertThat(result.unknownNames()).containsExactly("MYSTERY");
+    }
+
+    /**
+     * Giá thế giới trong bản tin là trung bình của cả kỳ, nên phải mang nguồn
+     * MOIT_CYCLE_AVG để không bao giờ lẫn với giá đóng cửa hằng ngày.
+     */
+    @Test
+    void importBulletinStoresWorldPricesTaggedAsCycleAverage() {
+        ParsedBulletin bulletin = new ParsedBulletin("https://moit.gov.vn/x.html",
+                LocalDateTime.of(2024, 1, 11, 15, 0),
+                List.of(new ParsedPrice("E5RON92", 21041, "lít", 35L)),
+                List.of(new ParsedBulletin.ParsedWorldPrice("MOPS_RON92", new BigDecimal("87.136"), "USD/thùng"),
+                        new ParsedBulletin.ParsedWorldPrice("MOPS_FO_180", new BigDecimal("447.346"), "USD/tấn")));
+
+        PriceImportService.ImportResult result = service.importBulletin(bulletin);
+
+        assertThat(result.worldInserted()).isEqualTo(2);
+
+        ArgumentCaptor<WorldPrice> saved = ArgumentCaptor.forClass(WorldPrice.class);
+        verify(worldPrices, org.mockito.Mockito.times(2)).save(saved.capture());
+
+        WorldPrice first = saved.getAllValues().get(0);
+        assertThat(first.getId().getObservedAt()).isEqualTo(T_2024_01_11);
+        assertThat(first.getId().getSymbol()).isEqualTo("MOPS_RON92");
+        assertThat(first.getPriceUsd()).isEqualByComparingTo("87.136");
+        assertThat(first.getUnit()).isEqualTo("USD/thùng");
+        assertThat(first.getSource()).isEqualTo("MOIT_CYCLE_AVG");
+        assertThat(saved.getAllValues().get(1).getUnit()).isEqualTo("USD/tấn");
+    }
+
+    /** Nạp lại bản tin đã có giá thế giới: không ghi đè, không nhân đôi. */
+    @Test
+    void importBulletinSkipsWorldPriceThatAlreadyExists() {
+        when(worldPrices.existsById(any(WorldPriceId.class))).thenAnswer(inv ->
+                "MOPS_RON92".equals(((WorldPriceId) inv.getArgument(0)).getSymbol()));
+        ParsedBulletin bulletin = new ParsedBulletin("u", LocalDateTime.of(2024, 1, 11, 15, 0),
+                List.of(new ParsedPrice("E5RON92", 21041, "lít", 35L)),
+                List.of(new ParsedBulletin.ParsedWorldPrice("MOPS_RON92", new BigDecimal("87.136"), "USD/thùng"),
+                        new ParsedBulletin.ParsedWorldPrice("MOPS_RON95", new BigDecimal("91.356"), "USD/thùng")));
+
+        PriceImportService.ImportResult result = service.importBulletin(bulletin);
+
+        assertThat(result.worldInserted()).isEqualTo(1);
+        verify(worldPrices, org.mockito.Mockito.times(1)).save(any(WorldPrice.class));
     }
 
     @Test

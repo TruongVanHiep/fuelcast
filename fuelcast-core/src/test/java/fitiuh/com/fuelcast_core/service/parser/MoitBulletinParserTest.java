@@ -90,7 +90,89 @@ class MoitBulletinParserTest {
         assertPrice(bulletin, "FO_180",  19472, "kg",  276);
     }
 
+    /**
+     * Bản tin 26/3/2026 ghi "Áp dụng từ 24 giờ 00' ngày 26 tháng 3", tức nửa đêm
+     * cuối ngày 26 = 00:00 ngày 27. LocalDateTime.of(..., 24, 0) ném
+     * DateTimeException và làm hỏng cả bản tin. Kết quả phải trùng khoá
+     * 2026-03-27T00:00 mà dữ liệu spike đã ghi, để nạp lại không bị nhân đôi.
+     */
+    @Test
+    void readsMidnightEffectiveTimeAsStartOfNextDay() throws IOException {
+        ParsedBulletin bulletin = parse("moit-2026-03-26.html");
+
+        assertThat(bulletin.isUsable()).isTrue();
+        assertThat(bulletin.effectiveAt()).isEqualTo(LocalDateTime.of(2026, 3, 27, 0, 0));
+        assertThat(bulletin.prices()).hasSize(5);
+
+        assertPrice(bulletin, "E5RON92",  23326, "lít", -4749);
+        assertPrice(bulletin, "RON95",    24332, "lít", -5625);
+        assertPrice(bulletin, "DO_005S",  35440, "lít", -2459);
+        assertPrice(bulletin, "KEROSENE", 35384, "lít", -971);
+        assertPrice(bulletin, "FO_180",   21748, "kg",  1503);
+    }
+
+    /** Chỉ 24:00 được hiểu là nửa đêm; giờ rác không được lặng lẽ thành ngày khác. */
+    @Test
+    void stillRejectsImpossibleTimesOtherThanMidnight() {
+        for (String time : new String[]{"24 giờ 30", "25 giờ 00"}) {
+            String html = "<html><body>Áp dụng từ " + time + "’ ngày 26 tháng 3 năm 2026.</body></html>";
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> parser.parse(html, "x"))
+                    .as(time)
+                    .isInstanceOf(java.time.DateTimeException.class);
+        }
+    }
+
+    /** Các số này được đối chiếu tay với câu "Bình quân giá thành phẩm..." trong bản tin. */
+    @Test
+    void readsWorldPricesOf2024Bulletin() throws IOException {
+        ParsedBulletin bulletin = parse("moit-2024-01-11.html");
+
+        assertThat(bulletin.worldPrices()).hasSize(5);
+        assertWorldPrice(bulletin, "MOPS_RON92",      "87.136",  "USD/thùng");
+        assertWorldPrice(bulletin, "MOPS_RON95",      "91.356",  "USD/thùng");
+        assertWorldPrice(bulletin, "MOPS_KEROSENE",   "100.748", "USD/thùng");
+        assertWorldPrice(bulletin, "MOPS_GASOIL_005", "98.486",  "USD/thùng");
+        assertWorldPrice(bulletin, "MOPS_FO_180",     "447.346", "USD/tấn");
+    }
+
+    /** Mazut tính theo tấn, còn lại theo thùng: đơn vị phải đi theo từng mặt hàng. */
+    @Test
+    void readsWorldPricesOf2026BulletinWithoutKerosene() throws IOException {
+        ParsedBulletin bulletin = parse("moit-2026-09-24.html");
+
+        assertThat(bulletin.worldPrices())
+                .extracting(ParsedBulletin.ParsedWorldPrice::symbol)
+                .containsExactlyInAnyOrder("MOPS_RON92", "MOPS_RON95", "MOPS_GASOIL_005", "MOPS_FO_180");
+        assertWorldPrice(bulletin, "MOPS_RON92",      "140.834", "USD/thùng");
+        assertWorldPrice(bulletin, "MOPS_GASOIL_005", "173.328", "USD/thùng");
+        assertWorldPrice(bulletin, "MOPS_FO_180",     "657.618", "USD/tấn");
+    }
+
+    /**
+     * Bản tin viết "131,050" (dấu phẩy là thập phân). So bằng compareTo vì
+     * 131.05 và 131.050 là cùng một giá trị nhưng khác scale.
+     */
+    @Test
+    void readsCommaAsDecimalSeparatorInWorldPrices() throws IOException {
+        ParsedBulletin bulletin = parse("moit-2026-03-26.html");
+
+        assertWorldPrice(bulletin, "MOPS_RON92", "131.050", "USD/thùng");
+        assertWorldPrice(bulletin, "MOPS_GASOIL_005", "204.620", "USD/thùng");
+    }
+
     // ───────────────────────────── helpers ─────────────────────────────
+
+    private static void assertWorldPrice(ParsedBulletin bulletin, String symbol,
+                                         String valueUsd, String unit) {
+        ParsedBulletin.ParsedWorldPrice w = bulletin.worldPrices().stream()
+                .filter(x -> symbol.equals(x.symbol()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("không tìm thấy giá thế giới " + symbol));
+
+        assertThat(w.valueUsd()).as("giá %s", symbol).isEqualByComparingTo(valueUsd);
+        assertThat(w.unit()).as("đơn vị %s", symbol).isEqualTo(unit);
+    }
 
     private ParsedBulletin parse(String fixture) throws IOException {
         try (InputStream in = getClass().getResourceAsStream("/fixtures/" + fixture)) {

@@ -89,6 +89,18 @@ class BulletinIngestionServiceTest {
                 IngestionStatus.RUNNING, IngestionStatus.RUNNING, IngestionStatus.SUCCESS);
     }
 
+    /** rows_ingested đếm cả dòng giá bán lẻ lẫn dòng giá thế giới mới ghi. */
+    @Test
+    void countsWorldPriceRowsInTheNumberOfNewRows() throws Exception {
+        when(scraper.fetchBulletin(URL)).thenReturn(fixture("moit-2024-01-11.html"));
+        when(importer.importBulletin(any(ParsedBulletin.class)))
+                .thenReturn(new PriceImportService.ImportResult(5, 0, 0, Set.of(), 1, 5));
+
+        BulletinIngestionService.Outcome outcome = service.ingest(URL);
+
+        assertThat(outcome.rows()).isEqualTo(10);
+    }
+
     @Test
     void fetchFailureMarksRunFailedWithoutPayloadAndNeverImports() throws Exception {
         when(scraper.fetchBulletin(URL)).thenThrow(new IOException("MOIT trả HTTP 302"));
@@ -179,6 +191,90 @@ class BulletinIngestionServiceTest {
 
         assertThat(result.skipped()).isEqualTo(1);
         verify(scraper, never()).fetchBulletin(anyString());
+    }
+
+    /**
+     * Bản SUCCESS cũ được đọc lại từ bản gốc để bổ sung phần parser mới đọc được
+     * (giá thế giới), và tuyệt đối không động tới mạng.
+     */
+    @Test
+    void reprocessReadsStoredPayloadWithoutTouchingTheNetwork() throws Exception {
+        IngestionRun stored = storedRun(1L, IngestionStatus.SUCCESS, fixture("moit-2024-01-11.html"));
+        when(runs.findIdsWithRawPayload()).thenReturn(List.of(1L));
+        when(runs.findById(1L)).thenReturn(java.util.Optional.of(stored));
+        when(importer.importBulletin(any(ParsedBulletin.class)))
+                .thenReturn(new PriceImportService.ImportResult(0, 5, 0, Set.of(), 1, 5));
+
+        BulletinIngestionService.ReprocessResult result = service.reprocessStored();
+
+        assertThat(result.processed()).isEqualTo(1);
+        assertThat(result.newRows()).isEqualTo(5);
+        assertThat(result.recovered()).isZero();
+        org.mockito.Mockito.verifyNoInteractions(scraper);
+        verify(runs, never()).save(any(IngestionRun.class));      // SUCCESS giữ nguyên
+    }
+
+    /** Ca thật: bản 26/3/2026 từng FAILED vì "24 giờ 00", sau khi sửa parser thì được cứu. */
+    @Test
+    void reprocessRecoversAFailedRunOnceTheParserCanReadIt() throws Exception {
+        IngestionRun failed = storedRun(2L, IngestionStatus.FAILED, fixture("moit-2026-03-26.html"));
+        failed.setErrorMessage("DateTimeException: Invalid value for HourOfDay (valid values 0 - 23): 24");
+        when(runs.findIdsWithRawPayload()).thenReturn(List.of(2L));
+        when(runs.findById(2L)).thenReturn(java.util.Optional.of(failed));
+        when(importer.importBulletin(any(ParsedBulletin.class)))
+                .thenReturn(new PriceImportService.ImportResult(0, 5, 0, Set.of(), 1, 5));
+
+        BulletinIngestionService.ReprocessResult result = service.reprocessStored();
+
+        assertThat(result.recovered()).isEqualTo(1);
+        assertThat(failed.getStatus()).isEqualTo(IngestionStatus.SUCCESS);
+        assertThat(failed.getErrorMessage()).isNull();
+        verify(runs).save(failed);
+    }
+
+    /** Một bản gốc vẫn không đọc được không được chặn các bản còn lại. */
+    @Test
+    void reprocessCarriesOnPastAPayloadThatStillFails() throws Exception {
+        IngestionRun notABulletin = storedRun(3L, IngestionStatus.FAILED,
+                "<html><body>Tổng kết công tác năm 2025</body></html>");
+        IngestionRun good = storedRun(4L, IngestionStatus.SUCCESS, fixture("moit-2024-01-11.html"));
+        when(runs.findIdsWithRawPayload()).thenReturn(List.of(3L, 4L));
+        when(runs.findById(3L)).thenReturn(java.util.Optional.of(notABulletin));
+        when(runs.findById(4L)).thenReturn(java.util.Optional.of(good));
+        when(importer.importBulletin(any(ParsedBulletin.class)))
+                .thenReturn(new PriceImportService.ImportResult(0, 5, 0, Set.of(), 1, 5));
+
+        BulletinIngestionService.ReprocessResult result = service.reprocessStored();
+
+        assertThat(result.processed()).isEqualTo(2);
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.failedUrls()).containsExactly(notABulletin.getTargetUrl());
+        assertThat(result.newRows()).isEqualTo(5);
+        assertThat(notABulletin.getStatus()).isEqualTo(IngestionStatus.FAILED);
+    }
+
+    /**
+     * Bản đang SUCCESS mà parse lại hỏng nghĩa là parser vừa bị hồi quy. Phải báo
+     * ra, nhưng không hạ trạng thái: dữ liệu nó đã ghi trước đó vẫn đúng.
+     */
+    @Test
+    void reprocessReportsButDoesNotDowngradeASuccessfulRunThatNowFails() throws Exception {
+        IngestionRun regressed = storedRun(5L, IngestionStatus.SUCCESS, "<html><body>không có giá</body></html>");
+        when(runs.findIdsWithRawPayload()).thenReturn(List.of(5L));
+        when(runs.findById(5L)).thenReturn(java.util.Optional.of(regressed));
+
+        BulletinIngestionService.ReprocessResult result = service.reprocessStored();
+
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(regressed.getStatus()).isEqualTo(IngestionStatus.SUCCESS);
+        verify(runs, never()).save(any(IngestionRun.class));
+    }
+
+    private static IngestionRun storedRun(long id, IngestionStatus status, String rawPayload) {
+        return IngestionRun.builder()
+                .id(id).source("MOIT_BULLETIN").status(status)
+                .targetUrl("https://moit.gov.vn/tin-tuc/run-" + id + ".html")
+                .rawPayload(rawPayload).build();
     }
 
     private String fixture(String name) throws IOException {
