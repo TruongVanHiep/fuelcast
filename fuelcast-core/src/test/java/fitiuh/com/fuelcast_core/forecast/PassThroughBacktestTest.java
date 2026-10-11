@@ -37,6 +37,24 @@ class PassThroughBacktestTest {
         assertThat(r.gain()).isCloseTo(1.0, within(1e-6));
     }
 
+    /**
+     * walkForward trả từng lần đoán kèm hệ số đã dùng, để lưu và giải thích được.
+     * Trên quan hệ chính xác y = 170x + 5, hệ số học được phải đúng như vậy và
+     * số kỳ đã học tăng dần theo từng bước.
+     */
+    @Test
+    void walkForwardReportsTheCoefficientsAndTrainingSizeUsedForEachStep() {
+        List<PassThroughBacktest.Step> steps = PassThroughBacktest.walkForward(exactSeries(25, 170.0, 5.0), 20);
+
+        assertThat(steps).hasSize(5);
+        assertThat(steps.get(0).trainPeriods()).isEqualTo(20);
+        assertThat(steps.get(4).trainPeriods()).isEqualTo(24);
+        assertThat(steps.get(0).slope()).isCloseTo(170.0, within(1e-6));
+        assertThat(steps.get(0).intercept()).isCloseTo(5.0, within(1e-6));
+        assertThat(steps.get(0).predictedDeltaVnd())
+                .isCloseTo(steps.get(0).observation().deltaVnd(), within(1e-6));
+    }
+
     @Test
     void doesNotPredictBeforeEnoughHistory() {
         Result r = PassThroughBacktest.run(exactSeries(25, 170.0, 0.0), 20);
