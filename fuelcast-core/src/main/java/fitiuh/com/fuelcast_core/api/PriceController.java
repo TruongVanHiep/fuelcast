@@ -4,10 +4,13 @@ import fitiuh.com.fuelcast_core.service.PriceQueryService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -26,5 +29,18 @@ public class PriceController {
     @GetMapping("/prices/current")
     public List<CurrentPriceDto> current() {
         return priceQueryService.currentPrices();
+    }
+
+    /**
+     * Chuỗi giá một mặt hàng. from/to là ngày (yyyy-MM-dd), cả hai tùy chọn.
+     * @DateTimeFormat bắt buộc: không có nó Spring đọc LocalDate theo định dạng
+     * của locale chứ không phải ISO.
+     */
+    @GetMapping("/prices/history")
+    public PriceHistoryDto history(
+            @RequestParam String product,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return priceQueryService.history(product, from, to);
     }
 }

@@ -27,6 +27,10 @@ spring:
     # (kỳ nửa đêm 00:00 ngày 27 sẽ thành 17:00Z ngày 26 và bị đọc nhầm ngày).
     time-zone: Asia/Ho_Chi_Minh
 
+  mvc:
+    problemdetails:
+      enabled: true   # lỗi chuẩn của Spring cũng trả application/problem+json (RFC 7807)
+
 server:
   port: 8080
 

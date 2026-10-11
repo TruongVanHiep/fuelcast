@@ -1,12 +1,15 @@
 package fitiuh.com.fuelcast_core.api;
 
+import fitiuh.com.fuelcast_core.service.InvalidDateRangeException;
 import fitiuh.com.fuelcast_core.service.PriceQueryService;
+import fitiuh.com.fuelcast_core.service.ProductNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -78,6 +81,76 @@ class PriceControllerTest {
         mockMvc.perform(get("/api/v1/prices/current"))
                 .andExpect(jsonPath("$[0].effectiveAt").value("2026-10-08T15:00:00+07:00"))
                 .andExpect(jsonPath("$[1].effectiveAt").value("2026-03-27T00:00:00+07:00"));
+    }
+
+    // ───────────────────────────── history ─────────────────────────────
+
+    @Test
+    void historyReturnsTheSeriesWithProductInfoOnce() throws Exception {
+        when(priceQueryService.history("RON95", LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31)))
+                .thenReturn(new PriceHistoryDto("RON95", "Xăng RON95-III", "lít", (short) 1,
+                        LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31),
+                        List.of(new PricePointDto(OCT_08, 28254L, 1065L),
+                                new PricePointDto(OCT_08.plusDays(7), 28300L, 46L))));
+
+        mockMvc.perform(get("/api/v1/prices/history")
+                        .param("product", "RON95").param("from", "2025-01-01").param("to", "2025-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.product").value("RON95"))
+                .andExpect(jsonPath("$.from").value("2025-01-01"))
+                .andExpect(jsonPath("$.to").value("2025-12-31"))
+                .andExpect(jsonPath("$.points.length()").value(2))
+                .andExpect(jsonPath("$.points[0].priceVnd").value(28254))
+                .andExpect(jsonPath("$.points[1].deltaVnd").value(46));
+    }
+
+    /** from và to tùy chọn: bỏ trống thì controller truyền null cho service tự đặt mặc định. */
+    @Test
+    void historyPassesNullWhenDatesAreOmitted() throws Exception {
+        when(priceQueryService.history("RON95", null, null))
+                .thenReturn(new PriceHistoryDto("RON95", "Xăng RON95-III", "lít", (short) 1,
+                        LocalDate.of(2025, 10, 11), LocalDate.of(2026, 10, 11), List.of()));
+
+        mockMvc.perform(get("/api/v1/prices/history").param("product", "RON95"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.points.length()").value(0));
+    }
+
+    /** Lỗi theo RFC 7807, không phải trang lỗi hay chuỗi trơn. */
+    @Test
+    void historyOfUnknownProductIsProblemJson404() throws Exception {
+        when(priceQueryService.history("XYZ", null, null)).thenThrow(new ProductNotFoundException("XYZ"));
+
+        mockMvc.perform(get("/api/v1/prices/history").param("product", "XYZ"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Mặt hàng không tồn tại"));
+    }
+
+    @Test
+    void historyWithStartAfterEndIsProblemJson400() throws Exception {
+        when(priceQueryService.history("RON95", LocalDate.of(2025, 6, 1), LocalDate.of(2025, 1, 1)))
+                .thenThrow(new InvalidDateRangeException(LocalDate.of(2025, 6, 1), LocalDate.of(2025, 1, 1)));
+
+        mockMvc.perform(get("/api/v1/prices/history")
+                        .param("product", "RON95").param("from", "2025-06-01").param("to", "2025-01-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"));
+    }
+
+    @Test
+    void historyWithMalformedDateIsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/prices/history").param("product", "RON95").param("from", "01/02/2025"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"));
+    }
+
+    @Test
+    void historyWithoutProductIsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/prices/history"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"));
     }
 
     @Test
