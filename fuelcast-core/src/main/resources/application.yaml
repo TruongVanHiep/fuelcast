@@ -23,6 +23,9 @@ spring:
 
   jackson:
     default-property-inclusion: non_null
+    # Mặc định Jackson ghi thời điểm theo UTC. Bản tin MOIT tính theo giờ Việt Nam
+    # (kỳ nửa đêm 00:00 ngày 27 sẽ thành 17:00Z ngày 26 và bị đọc nhầm ngày).
+    time-zone: Asia/Ho_Chi_Minh
 
 server:
   port: 8080
