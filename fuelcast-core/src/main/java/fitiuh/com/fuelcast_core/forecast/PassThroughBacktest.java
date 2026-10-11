@@ -1,6 +1,7 @@
 package fitiuh.com.fuelcast_core.forecast;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -22,6 +23,16 @@ public final class PassThroughBacktest {
     public record Observation(OffsetDateTime at, double deltaVnd, double deltaUsd) { }
 
     /**
+     * Một lần đoán của walk-forward, kèm cả những gì mô hình đã dùng để đoán, để
+     * lưu lại và giải thích được.
+     *
+     * @param slope          đồng/lít trên mỗi USD/thùng, học từ trainPeriods kỳ trước
+     * @param trainPeriods   số kỳ đã học tại thời điểm đoán
+     */
+    public record Step(Observation observation, double predictedDeltaVnd,
+                       double slope, double intercept, int trainPeriods) { }
+
+    /**
      * @param maeNaive  sai số tuyệt đối trung bình khi đoán "không đổi" (Δ = 0)
      * @param maeModel  sai số tuyệt đối trung bình của mô hình
      * @param hitRate   tỷ lệ đoán đúng chiều tăng/giảm, trong [0, 1]
@@ -39,29 +50,44 @@ public final class PassThroughBacktest {
         }
     }
 
-    public static Result run(List<Observation> observations, int minTrain) {
+    /**
+     * Đi theo thời gian, mỗi kỳ chỉ đoán bằng các kỳ trước đó. Trả về từng lần
+     * đoán; kỳ đầu (chưa đủ lịch sử để học) không có dòng nào.
+     */
+    public static List<Step> walkForward(List<Observation> observations, int minTrain) {
         OnlineOls ols = new OnlineOls();
-        int n = 0;
-        double sumNaive = 0;
-        double sumModel = 0;
-        int hits = 0;
+        List<Step> steps = new ArrayList<>();
 
         for (Observation o : observations) {      // đã sắp theo thời gian tăng dần
             if (ols.count() >= minTrain && ols.canPredict()) {
-                double predicted = ols.predict(o.deltaUsd());   // 1. đoán bằng quá khứ
-                n++;
-                sumNaive += Math.abs(o.deltaVnd());
-                sumModel += Math.abs(o.deltaVnd() - predicted);
-                if (Math.signum(predicted) == Math.signum(o.deltaVnd())) {
-                    hits++;
-                }
+                steps.add(new Step(o, ols.predict(o.deltaUsd()),        // 1. đoán bằng quá khứ
+                        ols.slope(), ols.intercept(), (int) ols.count()));
             }
-            ols.add(o.deltaUsd(), o.deltaVnd());                // 2. rồi mới học kỳ này
+            ols.add(o.deltaUsd(), o.deltaVnd());                        // 2. rồi mới học kỳ này
         }
+        return steps;
+    }
 
-        if (n == 0) {
+    public static Result run(List<Observation> observations, int minTrain) {
+        return summarise(walkForward(observations, minTrain));
+    }
+
+    static Result summarise(List<Step> steps) {
+        if (steps.isEmpty()) {
             return new Result(0, 0, 0, 0);
         }
+        double sumNaive = 0;
+        double sumModel = 0;
+        int hits = 0;
+        for (Step s : steps) {
+            double actual = s.observation().deltaVnd();
+            sumNaive += Math.abs(actual);
+            sumModel += Math.abs(actual - s.predictedDeltaVnd());
+            if (Math.signum(s.predictedDeltaVnd()) == Math.signum(actual)) {
+                hits++;
+            }
+        }
+        int n = steps.size();
         return new Result(n, sumNaive / n, sumModel / n, (double) hits / n);
     }
 }
