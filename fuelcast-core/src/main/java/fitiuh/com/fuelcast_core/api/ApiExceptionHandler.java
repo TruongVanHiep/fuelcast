@@ -1,6 +1,7 @@
 package fitiuh.com.fuelcast_core.api;
 
 import fitiuh.com.fuelcast_core.service.InvalidDateRangeException;
+import fitiuh.com.fuelcast_core.service.NoCycleDataException;
 import fitiuh.com.fuelcast_core.service.ProductNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -22,6 +23,13 @@ public class ApiExceptionHandler {
     public ProblemDetail productNotFound(ProductNotFoundException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
         problem.setTitle("Mặt hàng không tồn tại");
+        return problem;
+    }
+
+    @ExceptionHandler(NoCycleDataException.class)
+    public ProblemDetail noCycleData(NoCycleDataException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+        problem.setTitle("Chưa có dữ liệu kỳ điều hành");
         return problem;
     }
 
