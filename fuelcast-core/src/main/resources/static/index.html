@@ -102,7 +102,7 @@
   th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; }
   th { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
-  .bars { display: inline-block; width: 120px; vertical-align: middle; margin-left: 8px; }
+  .bars { display: inline-block; width: 72px; vertical-align: middle; margin-left: 8px; }
   .bars span { display: block; height: 6px; border-radius: 3px; margin: 2px 0; }
   .bars .model { background: var(--accent); }
   .bars .naive { background: var(--line); }
@@ -404,9 +404,19 @@
     }
     const maxMae = Math.max(...rows.map(r => Math.max(r.maeModelVnd, r.maeNaiveVnd)), 1);
 
+    // Tiêu đề ngắn để bảng vừa khung; phần giải thích đầy đủ nằm ở title.
+    const columns = [
+      ['Mặt hàng', ''],
+      ['Loại', 'REPLAY: phát lại trên lịch sử. LIVE: dự báo thật, đưa ra trước sự kiện.'],
+      ['Số kỳ', 'Số kỳ đã được chấm điểm'],
+      ['Sai số mô hình', 'Sai số tuyệt đối trung bình của mô hình, đồng'],
+      ['Sai số cơ sở', 'Sai số tuyệt đối trung bình khi đoán giá không đổi so với kỳ trước, đồng'],
+      ['Giảm', 'Phần trăm sai số giảm được so với đoán giá không đổi; âm là tệ hơn'],
+      ['Đúng chiều', 'Tỷ lệ đoán đúng chiều tăng hay giảm'],
+      ['Kết luận', '']
+    ];
     const head = el('thead', null, el('tr', null,
-      ...['Mặt hàng', 'Loại', 'Số kỳ', 'Sai số mô hình', 'Sai số "không đổi"', 'Giảm được', 'Đúng chiều', 'Kết luận']
-        .map(t => el('th', null, t))));
+      ...columns.map(([t, hint]) => el('th', hint ? { title: hint } : null, t))));
 
     const body = el('tbody', null, ...rows.map(r => {
       const bars = el('span', { class: 'bars' },
@@ -421,8 +431,12 @@
 
       return el('tr', null,
         el('td', null, r.name),
-        el('td', null, el('span', { class: 'badge warn' }, r.kind),
-          r.horizonDays === 0 ? ' cùng kỳ' : ' trước ' + r.horizonDays + ' ngày'),
+        el('td', null, el('span', {
+          class: 'badge warn',
+          title: r.horizonDays === 0
+            ? 'Dùng giá thế giới trung bình của chính kỳ đó (horizon 0)'
+            : 'Dự báo trước ' + r.horizonDays + ' ngày'
+        }, r.kind)),
         el('td', null, r.evaluations),
         el('td', null, nf.format(r.maeModelVnd) + ' đ', bars),
         el('td', null, nf.format(r.maeNaiveVnd) + ' đ'),
