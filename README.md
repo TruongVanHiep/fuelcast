@@ -1,5 +1,7 @@
 # FuelCast
 
+[![CI](https://github.com/TruongVanHiep/fuelcast/actions/workflows/ci.yml/badge.svg)](https://github.com/TruongVanHiep/fuelcast/actions/workflows/ci.yml)
+
 Theo dõi và dự báo giá xăng dầu bán lẻ ở Việt Nam theo từng kỳ điều hành giá
 (công bố chiều thứ Năm). Dữ liệu lấy từ bản tin của Bộ Công Thương.
 
