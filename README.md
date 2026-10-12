@@ -9,6 +9,11 @@ Trạng thái dự án: **đang phát triển**. Phần thu thập dữ liệu v
 phần dự báo mới đo được ở mức "giải thích một kỳ", chưa dự báo trước sự kiện.
 Xem mục *Điều gì đã được chứng minh, và điều gì chưa*.
 
+![Dashboard](docs/dashboard.png)
+
+*Dashboard ở `/`: đếm ngược tới kỳ công bố dự kiến, giá hiện hành, lịch sử giá và
+bảng điểm của mô hình. Lời cảnh báo REPLAY nằm ngay trên bảng điểm.*
+
 ## Đã có
 
 | Phần | Nội dung |
@@ -26,9 +31,12 @@ Cần JDK 21 và Docker.
 ```bash
 cd fuelcast-core
 docker compose up -d            # TimescaleDB, cổng 5433 trên máy
-./mvnw spring-boot:run          # API ở http://localhost:8080
+./mvnw spring-boot:run          # dashboard ở http://localhost:8080, API ở /api/v1
 ./mvnw test
 ```
+
+Dashboard là một trang tĩnh (`src/main/resources/static/index.html`) do chính Spring
+phục vụ; biểu đồ nạp thư viện ECharts từ CDN nên cần có mạng để vẽ.
 
 Cơ sở dữ liệu dùng cổng **5433** (không phải 5432) để không đụng PostgreSQL cài sẵn.
 
