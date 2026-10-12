@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FuelCast</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --text: #1b1f24;
+    --muted: #5d6673;
+    --line: #dfe3e8;
+    --accent: #1f6feb;
+    --up: #b4380f;
+    --up-bg: #fdeee8;
+    --down: #12703c;
+    --down-bg: #e5f5ec;
+    --warn: #8a5a00;
+    --warn-bg: #fff4d6;
+    --bad: #a1263a;
+    --bad-bg: #fde9ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216;
+      --surface: #181c22;
+      --text: #e8ebef;
+      --muted: #98a2b0;
+      --line: #2b323b;
+      --accent: #6aa5ff;
+      --up: #ff9d7a;
+      --up-bg: #3a211a;
+      --down: #5fd58e;
+      --down-bg: #14301f;
+      --warn: #f2c35a;
+      --warn-bg: #33290f;
+      --bad: #ff8f9f;
+      --bad-bg: #3a1a20;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  header h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  section { margin-top: 28px; }
+  h2 { margin: 0 0 12px; font-size: 1.1rem; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .muted { color: var(--muted); }
+  .small { font-size: 0.875rem; }
+
+  /* đếm ngược */
+  #countdown .big { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  #countdown .row { display: flex; flex-wrap: wrap; gap: 4px 24px; align-items: baseline; }
+
+  /* thẻ giá */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
+  .card .price { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card .unit { font-size: 0.85rem; color: var(--muted); font-weight: 400; }
+  .card.stale { opacity: 0.8; border-style: dashed; }
+  .chip {
+    display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px;
+    font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .chip.up   { color: var(--up);   background: var(--up-bg); }
+  .chip.down { color: var(--down); background: var(--down-bg); }
+  .chip.flat { color: var(--muted); background: var(--line); }
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 600;
+  }
+  .badge.warn { color: var(--warn); background: var(--warn-bg); }
+  .badge.ok   { color: var(--down); background: var(--down-bg); }
+  .badge.bad  { color: var(--bad);  background: var(--bad-bg); }
+
+  /* điều khiển biểu đồ */
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 8px; }
+  select, button.range {
+    font: inherit; color: var(--text); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+  }
+  button.range { cursor: pointer; }
+  button.range[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  #chart { width: 100%; height: 360px; }
+
+  /* bảng điểm */
+  .notice { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+  .bars { display: inline-block; width: 72px; vertical-align: middle; margin-left: 8px; }
+  .bars span { display: block; height: 6px; border-radius: 3px; margin: 2px 0; }
+  .bars .model { background: var(--accent); }
+  .bars .naive { background: var(--line); }
+
+  .error { color: var(--bad); }
+  footer { margin-top: 36px; color: var(--muted); font-size: 0.85rem; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FuelCast</h1>
+    <p>Giá xăng dầu bán lẻ theo từng kỳ điều hành, và mô hình đoán mức thay đổi của nó.</p>
+  </header>
+
+  <noscript><p class="notice">Trang này cần JavaScript để hiển thị dữ liệu.</p></noscript>
+
+  <section aria-labelledby="h-count">
+    <h2 id="h-count">Kỳ điều hành kế tiếp</h2>
+    <div id="countdown" class="panel" aria-live="polite">Đang tải…</div>
+  </section>
+
+  <section aria-labelledby="h-now">
+    <h2 id="h-now">Giá hiện hành (vùng 1)</h2>
+    <div id="cards" class="cards"><p class="muted">Đang tải…</p></div>
+  </section>
+
+  <section aria-labelledby="h-hist">
+    <h2 id="h-hist">Lịch sử giá</h2>
+    <div class="panel">
+      <div class="controls">
+        <label>Mặt hàng
+          <select id="product"></select>
+        </label>
+        <span role="group" aria-label="Khoảng thời gian">
+          <button class="range" data-range="6m" aria-pressed="false">6 tháng</button>
+          <button class="range" data-range="1y" aria-pressed="true">1 năm</button>
+          <button class="range" data-range="all" aria-pressed="false">Tất cả</button>
+        </span>
+        <span id="hist-meta" class="muted small"></span>
+      </div>
+      <div id="chart" role="img" aria-label="Biểu đồ giá bán lẻ theo thời gian"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-score">
+    <h2 id="h-score">Độ chính xác của mô hình</h2>
+    <div class="panel">
+      <p id="notice" class="notice" hidden></p>
+      <div id="score-error" hidden></div>
+      <div class="scroll"><table id="scorecard"></table></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Thông tin chỉ mang tính tham khảo, không phải tư vấn đầu tư. Dữ liệu từ các bản tin
+       điều hành giá của Bộ Công Thương.</p>
+    <p>Dữ liệu qua API: <a href="/api/v1/prices/current">/prices/current</a>,
+       <a href="/api/v1/cycles/current">/cycles/current</a>,
+       <a href="/api/v1/accuracy/scorecard">/accuracy/scorecard</a>.</p>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const API = '/api/v1';
+  const TZ = 'Asia/Ho_Chi_Minh';
+  const STALE_DAYS = 45;          // quá ngần này ngày chưa có giá mới thì coi là cũ
+  const DATA_START = '2024-01-01';
+
+  const nf = new Intl.NumberFormat('vi-VN');
+  const dateFmt = new Intl.DateTimeFormat('vi-VN', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' });
+  const dateTimeFmt = new Intl.DateTimeFormat('vi-VN', {
+    timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+
+  /* ---------- tiện ích ---------- */
+
+  function el(tag, props, ...children) {
+    const node = document.createElement(tag);
+    if (props) {
+      for (const [k, v] of Object.entries(props)) {
+        if (k === 'class') node.className = v;
+        else node.setAttribute(k, v);
+      }
+    }
+    for (const c of children) {
+      node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    }
+    return node;
+  }
+
+  async function getJson(path) {
+    const res = await fetch(API + path);
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try { const p = await res.json(); msg = p.detail || p.title || msg; } catch (e) { /* giữ msg */ }
+      throw new Error(msg);
+    }
+    return res.json();
+  }
+
+  function showError(container, what, err) {
+    container.replaceChildren(el('p', { class: 'error' }, 'Không tải được ' + what + ': ' + err.message));
+  }
+
+  function formatDelta(d) {
+    if (d === null || d === undefined) return { text: '–', cls: 'flat' };
+    if (d === 0) return { text: '0', cls: 'flat' };
+    return d > 0
+      ? { text: '▲ +' + nf.format(d), cls: 'up' }
+      : { text: '▼ −' + nf.format(Math.abs(d)), cls: 'down' };
+  }
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  /* ---------- đếm ngược ---------- */
+
+  let countdownTimer = null;
+
+  function renderCountdown(c) {
+    const box = document.getElementById('countdown');
+    const next = Date.parse(c.expectedNextAt);
+
+    const big = el('div', { class: 'big' });
+    const row = el('div', { class: 'row' }, big);
+    const info = el('p', { class: 'muted small' },
+      'Dự kiến công bố: ' + dateTimeFmt.format(next) + '. Đây chỉ là dự kiến theo thói quen ' +
+      '(thứ Năm 15:00); có kỳ dời ngày vì lễ hoặc điều chỉnh đột xuất. ' +
+      'Kỳ gần nhất có hiệu lực lúc ' + dateTimeFmt.format(Date.parse(c.lastEffectiveAt)) +
+      ' (kỳ ' + dateFmt.format(Date.parse(c.lastCycleStart)) + ' đến ' +
+      dateFmt.format(Date.parse(c.lastCycleEnd)) + ').');
+    box.replaceChildren(row, info);
+
+    function tick() {
+      const ms = next - Date.now();
+      if (ms <= 0) {
+        big.replaceChildren(el('span', { class: 'badge warn' }, 'Quá giờ dự kiến'),
+          ' chưa thấy bản tin mới');
+        return;
+      }
+      const s = Math.floor(ms / 1000);
+      const d = Math.floor(s / 86400);
+      const hh = String(Math.floor((s % 86400) / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      big.textContent = (d > 0 ? d + ' ngày ' : '') + hh + ':' + mm + ':' + ss;
+    }
+    tick();
+    if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = setInterval(tick, 1000);
+  }
+
+  /* ---------- thẻ giá ---------- */
+
+  const currentByProduct = {};
+
+  function renderCards(prices) {
+    const box = document.getElementById('cards');
+    const now = Date.now();
+    for (const p of prices) currentByProduct[p.product] = p;
+    box.replaceChildren(...prices.map(p => {
+      const at = Date.parse(p.effectiveAt);
+      const ageDays = Math.floor((now - at) / 86400000);
+      const stale = ageDays > STALE_DAYS;
+      const delta = formatDelta(p.deltaVnd);
+
+      const card = el('div', { class: 'card' + (stale ? ' stale' : '') },
+        el('h3', null, p.name),
+        el('div', { class: 'price' }, nf.format(p.priceVnd), ' ',
+          el('span', { class: 'unit' }, 'đ/' + p.unit)),
+        el('span', { class: 'chip ' + delta.cls }, delta.text),
+        el('div', { class: 'muted small' }, 'Hiệu lực ' + dateFmt.format(at)));
+      if (stale) {
+        card.append(el('div', { class: 'small' },
+          el('span', { class: 'badge warn' }, 'Đã ' + ageDays + ' ngày chưa có giá mới')));
+      }
+      return card;
+    }));
+
+    const select = document.getElementById('product');
+    const previous = select.value;
+    select.replaceChildren(...prices.map(p => el('option', { value: p.product }, p.name)));
+    if (previous && prices.some(p => p.product === previous)) select.value = previous;
+  }
+
+  /* ---------- biểu đồ lịch sử ---------- */
+
+  let chart = null;
+  let range = '1y';
+  let lastHistory = null;
+
+  function fromDate(r) {
+    if (r === 'all') return DATA_START;
+    const d = new Date();
+    d.setDate(d.getDate() - (r === '6m' ? 183 : 365));
+    return d.toISOString().slice(0, 10);
+  }
+
+  function drawChart(h) {
+    const holder = document.getElementById('chart');
+    if (typeof echarts === 'undefined') {
+      holder.replaceChildren(el('p', { class: 'error' },
+        'Không tải được thư viện biểu đồ (cần kết nối mạng tới CDN).'));
+      return;
+    }
+    if (!chart) chart = echarts.init(holder);
+
+    const accent = cssVar('--accent');
+    const muted = cssVar('--muted');
+    const line = cssVar('--line');
+
+    chart.setOption({
+      animation: false,
+      grid: { left: 60, right: 20, top: 20, bottom: 36 },
+      tooltip: {
+        trigger: 'axis',
+        formatter(params) {
+          const p = params[0];
+          const delta = formatDelta(p.value[2]);
+          return dateTimeFmt.format(new Date(p.value[0])) + '<br><b>' + nf.format(p.value[1]) +
+                 ' đ/' + h.unit + '</b><br>so với kỳ trước: ' + delta.text;
+        }
+      },
+      xAxis: { type: 'time', axisLabel: { color: muted }, axisLine: { lineStyle: { color: line } } },
+      yAxis: {
+        type: 'value', scale: true,
+        axisLabel: { color: muted, formatter: v => nf.format(v) },
+        splitLine: { lineStyle: { color: line } }
+      },
+      series: [{
+        type: 'line',
+        step: 'end',        // giá giữ nguyên cho tới kỳ công bố kế tiếp
+        showSymbol: h.points.length <= 80,
+        symbolSize: 5,
+        lineStyle: { width: 2, color: accent },
+        itemStyle: { color: accent },
+        areaStyle: { color: accent, opacity: 0.08 },
+        data: h.points.map(p => [p.effectiveAt, p.priceVnd, p.deltaVnd])
+      }]
+    }, true);
+    chart.resize();
+  }
+
+  async function loadHistory() {
+    const product = document.getElementById('product').value;
+    const meta = document.getElementById('hist-meta');
+    if (!product) return;
+    meta.textContent = 'Đang tải…';
+    try {
+      const h = await getJson('/prices/history?product=' + encodeURIComponent(product) +
+                              '&from=' + fromDate(range));
+      lastHistory = h;
+      meta.textContent = h.points.length + ' kỳ, từ ' + dateFmt.format(Date.parse(h.from)) +
+                         ' đến ' + dateFmt.format(Date.parse(h.to));
+      if (h.points.length === 0) {
+        const latest = currentByProduct[product];
+        const why = latest
+          ? ' Giá gần nhất của mặt hàng này có hiệu lực ngày ' + dateFmt.format(Date.parse(latest.effectiveAt)) + '.'
+          : '';
+        document.getElementById('chart').replaceChildren(
+          el('p', { class: 'muted' }, 'Không có kỳ nào trong khoảng này.' + why));
+        chart = null;
+        return;
+      }
+      if (!chart) document.getElementById('chart').replaceChildren();
+      drawChart(h);
+    } catch (err) {
+      meta.textContent = '';
+      showError(document.getElementById('chart'), 'lịch sử giá', err);
+      chart = null;
+    }
+  }
+
+  /* ---------- bảng điểm ---------- */
+
+  function renderScorecard(sc) {
+    const notice = document.getElementById('notice');
+    notice.textContent = sc.notice;
+    notice.hidden = !sc.notice;
+
+    // Mỗi loại dự báo chỉ giữ phiên bản mô hình mới nhất; các phiên bản cũ là lịch sử.
+    const latest = {};
+    for (const r of sc.rows) {
+      if (!latest[r.kind] || r.modelVersion > latest[r.kind]) latest[r.kind] = r.modelVersion;
+    }
+    const rows = sc.rows.filter(r => r.modelVersion === latest[r.kind]);
+    const table = document.getElementById('scorecard');
+
+    if (rows.length === 0) {
+      table.replaceChildren(el('caption', { class: 'muted' }, 'Chưa có dòng chấm điểm nào.'));
+      return;
+    }
+    const maxMae = Math.max(...rows.map(r => Math.max(r.maeModelVnd, r.maeNaiveVnd)), 1);
+
+    // Tiêu đề ngắn để bảng vừa khung; phần giải thích đầy đủ nằm ở title.
+    const columns = [
+      ['Mặt hàng', ''],
+      ['Loại', 'REPLAY: phát lại trên lịch sử. LIVE: dự báo thật, đưa ra trước sự kiện.'],
+      ['Số kỳ', 'Số kỳ đã được chấm điểm'],
+      ['Sai số mô hình', 'Sai số tuyệt đối trung bình của mô hình, đồng'],
+      ['Sai số cơ sở', 'Sai số tuyệt đối trung bình khi đoán giá không đổi so với kỳ trước, đồng'],
+      ['Giảm', 'Phần trăm sai số giảm được so với đoán giá không đổi; âm là tệ hơn'],
+      ['Đúng chiều', 'Tỷ lệ đoán đúng chiều tăng hay giảm'],
+      ['Kết luận', '']
+    ];
+    const head = el('thead', null, el('tr', null,
+      ...columns.map(([t, hint]) => el('th', hint ? { title: hint } : null, t))));
+
+    const body = el('tbody', null, ...rows.map(r => {
+      const bars = el('span', { class: 'bars' },
+        el('span', { class: 'model', style: 'width:' + (100 * r.maeModelVnd / maxMae) + '%' }),
+        el('span', { class: 'naive', style: 'width:' + (100 * r.maeNaiveVnd / maxMae) + '%' }));
+      const verdict = r.beatsNaive
+        ? el('span', { class: 'badge ok', title: 'Sai số nhỏ hơn việc đoán giá không đổi' }, 'Thắng cơ sở')
+        : el('span', { class: 'badge bad', title: 'Không nhỏ hơn sai số của việc đoán giá không đổi: đừng dùng' },
+            'Không thắng');
+      const gain = (r.improvementPct > 0 ? '+' : r.improvementPct < 0 ? '−' : '') +
+                   Math.abs(r.improvementPct).toFixed(1) + '%';
+
+      return el('tr', null,
+        el('td', null, r.name),
+        el('td', null, el('span', {
+          class: 'badge warn',
+          title: r.horizonDays === 0
+            ? 'Dùng giá thế giới trung bình của chính kỳ đó (horizon 0)'
+            : 'Dự báo trước ' + r.horizonDays + ' ngày'
+        }, r.kind)),
+        el('td', null, r.evaluations),
+        el('td', null, nf.format(r.maeModelVnd) + ' đ', bars),
+        el('td', null, nf.format(r.maeNaiveVnd) + ' đ'),
+        el('td', null, gain),
+        el('td', null, r.directionHitPct.toFixed(0) + '%'),
+        el('td', null, verdict));
+    }));
+    table.replaceChildren(head, body);
+  }
+
+  /* ---------- khởi động ---------- */
+
+  function bindControls() {
+    document.getElementById('product').addEventListener('change', loadHistory);
+    for (const b of document.querySelectorAll('button.range')) {
+      b.addEventListener('click', () => {
+        range = b.dataset.range;
+        for (const o of document.querySelectorAll('button.range')) {
+          o.setAttribute('aria-pressed', String(o === b));
+        }
+        loadHistory();
+      });
+    }
+    window.addEventListener('resize', () => { if (chart) chart.resize(); });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (chart && lastHistory) drawChart(lastHistory);
+    });
+  }
+
+  async function start() {
+    bindControls();
+
+    const [cycle, prices, score] = await Promise.allSettled([
+      getJson('/cycles/current'),
+      getJson('/prices/current'),
+      getJson('/accuracy/scorecard')
+    ]);
+
+    if (cycle.status === 'fulfilled') renderCountdown(cycle.value);
+    else showError(document.getElementById('countdown'), 'kỳ điều hành', cycle.reason);
+
+    if (prices.status === 'fulfilled') {
+      renderCards(prices.value);
+      loadHistory();
+    } else {
+      showError(document.getElementById('cards'), 'giá hiện hành', prices.reason);
+    }
+
+    if (score.status === 'fulfilled') renderScorecard(score.value);
+    else {
+      const box = document.getElementById('score-error');
+      box.hidden = false;
+      showError(box, 'bảng điểm', score.reason);
+    }
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
