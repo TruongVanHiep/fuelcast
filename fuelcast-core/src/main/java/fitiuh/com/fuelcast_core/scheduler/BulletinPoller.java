@@ -1,6 +1,7 @@
 package fitiuh.com.fuelcast_core.scheduler;
 
 import fitiuh.com.fuelcast_core.entity.IngestionStatus;
+import fitiuh.com.fuelcast_core.forecast.LiveForecastService;
 import fitiuh.com.fuelcast_core.repository.IngestionRunRepository;
 import fitiuh.com.fuelcast_core.service.BulletinIngestionService;
 import fitiuh.com.fuelcast_core.service.scraper.BulletinLink;
@@ -49,6 +50,7 @@ public class BulletinPoller {
     private final MoitBulletinScraper scraper;
     private final BulletinIngestionService ingestion;
     private final IngestionRunRepository runs;
+    private final LiveForecastService liveForecasts;
     private final Clock clock;
     private final Duration requestGap;
 
@@ -60,11 +62,13 @@ public class BulletinPoller {
     public BulletinPoller(MoitBulletinScraper scraper,
                           BulletinIngestionService ingestion,
                           IngestionRunRepository runs,
+                          LiveForecastService liveForecasts,
                           Clock clock,
                           @Value("${fuelcast.ingestion.request-gap:PT5S}") Duration requestGap) {
         this.scraper = scraper;
         this.ingestion = ingestion;
         this.runs = runs;
+        this.liveForecasts = liveForecasts;
         this.clock = clock;
         this.requestGap = requestGap;
     }
@@ -94,9 +98,28 @@ public class BulletinPoller {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return;
         } catch (IOException | RuntimeException e) {
             // Không ném ra ngoài: một lần lỗi không được làm chết bộ lập lịch.
             log.warn("Quét bản tin thất bại, sẽ thử lại đúng nhịp: {}", e.toString());
+        }
+        refreshLiveForecasts();
+    }
+
+    /**
+     * Chấm các dự báo LIVE đã có đáp án và đảm bảo kỳ tới có dự báo. Chạy sau MỖI
+     * lượt quét chứ không chỉ khi có bản tin mới, để tự sửa nếu lần trước lỡ dở.
+     * Tách riêng try/catch: lỗi ở đây không được che đi việc nạp bản tin đã xong.
+     */
+    private void refreshLiveForecasts() {
+        try {
+            LiveForecastService.RefreshResult r = liveForecasts.refresh();
+            if (r.graded() > 0 || r.created() > 0) {
+                log.info("Dự báo LIVE: chấm {}, tạo mới {}, đã có {}, không dự báo được {}",
+                        r.graded(), r.created(), r.existing(), r.skipped());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Làm mới dự báo LIVE thất bại: {}", e.toString());
         }
     }
 
