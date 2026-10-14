@@ -23,6 +23,7 @@ bảng điểm của mô hình. Lời cảnh báo REPLAY nằm ngay trên bảng
 | API đọc | `GET /api/v1/prices/current`, `/prices/history`, `/cycles/current`, `/accuracy/scorecard` |
 | Lập lịch | Tự đi hỏi MOIT xem có bản tin mới và nạp nó (mặc định tắt, xem mục *Chạy*) |
 | Mô hình | Truyền dẫn giá thế giới → giá bán lẻ, đánh giá walk-forward so với "giá không đổi" |
+| Dự báo LIVE | Dự báo cho kỳ tới được tạo **trước** bản tin, tự chấm điểm khi bản tin ra (`/forecasts/next`) |
 | Lỗi | Theo RFC 7807 (`application/problem+json`) |
 
 ## Chạy
@@ -96,6 +97,12 @@ trước). So với đoán "giá không đổi":
 - **Đây là "giải thích", chưa phải "dự báo".** Giá thế giới trung bình của kỳ chỉ
   đầy đủ vào lúc công bố, nên mô hình đang ở *horizon 0*. Dự báo trước sự kiện cần
   số liệu theo ngày (tỷ giá, giá futures) mà dự án chưa thu thập.
+- **Dự báo THẬT, trước sự kiện, hiện chưa hơn việc đoán "giá không đổi".** Mô hình chỉ
+  dùng thông tin có trước giờ công bố (giá thế giới của kỳ vừa rồi) cho sai số 449 đến
+  506 đồng, so với 447 đến 514 của "không đổi", và đúng chiều khoảng 50% (tung đồng
+  xu). Toàn bộ kỹ năng ở bảng trên đến từ giá thế giới của *chính kỳ đó*, thứ không ai
+  biết trước. Muốn dự báo thật cần số liệu theo ngày (tỷ giá, giá futures). Hệ thống
+  vẫn ghi dự báo `LIVE` mỗi kỳ và chấm điểm, để có bằng chứng ngoài mẫu từ nay.
 - **Các dòng trong bảng `forecast` hiện đều là `REPLAY`**, tức phát lại trên lịch
   sử. Mô hình được chọn sau khi đã nhìn dữ liệu nên kết quả lạc quan hơn dự báo
   thật. API bảng điểm tách `REPLAY` khỏi `LIVE` và luôn kèm lời cảnh báo.
@@ -113,6 +120,7 @@ Thông tin chỉ mang tính tham khảo, không phải tư vấn đầu tư.
 
 ## Việc tiếp theo
 
-- Thu thập tỷ giá USD/VND và giá futures theo ngày để dự báo thật theo `horizon_days`.
+- Thu thập tỷ giá USD/VND và giá futures theo ngày để dự báo thật theo `horizon_days`:
+  đây là điều kiện để dự báo `LIVE` có kỹ năng thật.
+- Để bộ quét chạy và để bảng điểm `LIVE` tích luỹ qua nhiều kỳ.
 - Tìm hai bản tin bị thiếu và hỗ trợ bản tin dạng bảng của 26/6/2025.
-- Lưu dự báo `LIVE` trước mỗi kỳ công bố và chấm điểm sau đó.

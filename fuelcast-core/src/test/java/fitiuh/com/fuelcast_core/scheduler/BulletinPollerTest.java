@@ -1,6 +1,7 @@
 package fitiuh.com.fuelcast_core.scheduler;
 
 import fitiuh.com.fuelcast_core.entity.IngestionStatus;
+import fitiuh.com.fuelcast_core.forecast.LiveForecastService;
 import fitiuh.com.fuelcast_core.repository.IngestionRunRepository;
 import fitiuh.com.fuelcast_core.scheduler.BulletinPoller.PollResult;
 import fitiuh.com.fuelcast_core.service.BulletinIngestionService;
@@ -40,8 +41,10 @@ class BulletinPollerTest {
     private final BulletinIngestionService ingestion = mock(BulletinIngestionService.class);
     private final IngestionRunRepository runs = mock(IngestionRunRepository.class);
 
+    private final LiveForecastService live = mock(LiveForecastService.class);
+
     private BulletinPoller pollerAt(OffsetDateTime now) {
-        return new BulletinPoller(scraper, ingestion, runs,
+        return new BulletinPoller(scraper, ingestion, runs, live,
                 Clock.fixed(now.toInstant(), VN), Duration.ZERO);
     }
 
@@ -163,6 +166,30 @@ class BulletinPollerTest {
         poller.tick();
 
         verify(scraper, times(1)).fetchListingPage(1);
+    }
+
+    /**
+     * Làm mới dự báo LIVE chạy sau MỖI lượt quét, kể cả khi không có bản tin nào
+     * mới: chấm điểm và tạo dự báo cho kỳ tới phải tự sửa nếu lần trước lỡ dở.
+     */
+    @Test
+    void refreshesLiveForecastsAfterEveryPollEvenWhenNothingIsNew() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        verify(live).refresh();
+    }
+
+    /** Lỗi khi làm mới dự báo không được ném ra khỏi @Scheduled. */
+    @Test
+    void aFailingLiveRefreshDoesNotEscapeTick() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page());
+        when(live.refresh()).thenThrow(new IllegalStateException("DB lỗi"));
+
+        pollerAt(THURSDAY_3PM).tick();       // không được ném
+
+        verify(live).refresh();
     }
 
     /**

@@ -126,6 +126,14 @@
     <div id="countdown" class="panel" aria-live="polite">Đang tải…</div>
   </section>
 
+  <section aria-labelledby="h-next">
+    <h2 id="h-next">Dự báo cho kỳ tới</h2>
+    <div class="panel">
+      <p id="next-notice" class="notice" hidden></p>
+      <div id="next-items" class="cards"><p class="muted">Đang tải…</p></div>
+    </div>
+  </section>
+
   <section aria-labelledby="h-now">
     <h2 id="h-now">Giá hiện hành (vùng 1)</h2>
     <div id="cards" class="cards"><p class="muted">Đang tải…</p></div>
@@ -260,6 +268,31 @@
     tick();
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = setInterval(tick, 1000);
+  }
+
+  /* ---------- dự báo cho kỳ tới ---------- */
+
+  function renderNext(n) {
+    const notice = document.getElementById('next-notice');
+    notice.textContent = n.notice;
+    notice.hidden = !n.notice;
+
+    const box = document.getElementById('next-items');
+    if (n.items.length === 0) {
+      box.replaceChildren(el('p', { class: 'muted' }, 'Chưa có dự báo cho kỳ tới.'));
+      return;
+    }
+    box.replaceChildren(...n.items.map(f => {
+      const delta = formatDelta(f.predictedDeltaVnd);
+      return el('div', { class: 'card' },
+        el('h3', null, f.name),
+        el('div', { class: 'price' }, nf.format(f.predictedVnd), ' ',
+          el('span', { class: 'unit' }, 'đ/' + f.unit)),
+        el('span', { class: 'chip ' + delta.cls }, delta.text),
+        el('div', { class: 'muted small' },
+          'Dự báo lúc ' + dateTimeFmt.format(Date.parse(f.createdAt))),
+        el('div', { class: 'small' }, el('span', { class: 'badge warn' }, 'LIVE')));
+    }));
   }
 
   /* ---------- thẻ giá ---------- */
@@ -469,11 +502,15 @@
   async function start() {
     bindControls();
 
-    const [cycle, prices, score] = await Promise.allSettled([
+    const [cycle, prices, score, next] = await Promise.allSettled([
       getJson('/cycles/current'),
       getJson('/prices/current'),
-      getJson('/accuracy/scorecard')
+      getJson('/accuracy/scorecard'),
+      getJson('/forecasts/next')
     ]);
+
+    if (next.status === 'fulfilled') renderNext(next.value);
+    else showError(document.getElementById('next-items'), 'dự báo kỳ tới', next.reason);
 
     if (cycle.status === 'fulfilled') renderCountdown(cycle.value);
     else showError(document.getElementById('countdown'), 'kỳ điều hành', cycle.reason);
