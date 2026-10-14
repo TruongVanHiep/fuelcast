@@ -12,6 +12,9 @@ public interface IngestionRunRepository extends JpaRepository<IngestionRun, Long
     /** Đã nạp thành công URL này chưa, để lần chạy sau bỏ qua thay vì tải lại. */
     boolean existsByTargetUrlAndStatus(String targetUrl, IngestionStatus status);
 
+    /** Số lần nạp URL này đã thất bại, để bộ quét biết khi nào thì thôi thử lại. */
+    long countByTargetUrlAndStatus(String targetUrl, IngestionStatus status);
+
     /**
      * Id của mọi lần nạp còn giữ bản gốc. Chỉ lấy id, không lấy entity: mỗi
      * raw_payload cỡ 110 KB, nạp cả trăm bản vào bộ nhớ một lúc là lãng phí.

@@ -21,6 +21,7 @@ bảng điểm của mô hình. Lời cảnh báo REPLAY nằm ngay trên bảng
 | Thu thập | Quét danh sách tin moit.gov.vn, tải từng bản tin, **lưu HTML gốc**, bóc giá bán lẻ và giá thế giới |
 | Lưu trữ | PostgreSQL + TimescaleDB, schema do Flyway quản lý, nạp lại không nhân đôi (khoá tự nhiên) |
 | API đọc | `GET /api/v1/prices/current`, `/prices/history`, `/cycles/current`, `/accuracy/scorecard` |
+| Lập lịch | Tự đi hỏi MOIT xem có bản tin mới và nạp nó (mặc định tắt, xem mục *Chạy*) |
 | Mô hình | Truyền dẫn giá thế giới → giá bán lẻ, đánh giá walk-forward so với "giá không đổi" |
 | Lỗi | Theo RFC 7807 (`application/problem+json`) |
 
@@ -39,6 +40,11 @@ Dashboard là một trang tĩnh (`src/main/resources/static/index.html`) do chí
 phục vụ; biểu đồ nạp thư viện ECharts từ CDN nên cần có mạng để vẽ.
 
 Cơ sở dữ liệu dùng cổng **5433** (không phải 5432) để không đụng PostgreSQL cài sẵn.
+
+**Tự động nạp bản tin mới.** Mặc định tắt, để test và các lệnh chạy một lần không lén
+gọi mạng. Bật khi triển khai bằng `--fuelcast.ingestion.poll.enabled=true`. Hai nhịp:
+mỗi 10 phút trong khung thứ Năm 14:45 đến 17:00 (giờ Việt Nam), thưa hơn (6 giờ) ngoài
+khung để bắt kỳ bị dời ngày. Chỉ an toàn khi chạy một bản ứng dụng.
 
 Các việc chạy bằng dòng lệnh (thêm `--spring.main.web-application-type=none` để app tự thoát):
 
