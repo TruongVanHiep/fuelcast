@@ -42,3 +42,9 @@ fuelcast:
   # Bật bằng: --fuelcast.import.csv=đường/dẫn/spike_result.csv
   import:
     csv: ""
+
+  ingestion:
+    poll:
+      # Tự đi hỏi MOIT xem có bản tin mới. Mặc định TẮT để test và các lệnh chạy một
+      # lần không lén gọi mạng. Bật khi triển khai: --fuelcast.ingestion.poll.enabled=true
+      enabled: false
