@@ -110,17 +110,20 @@ trước). So với đoán "giá không đổi":
   điều đó thay vì giấu.
 - **Giá thế giới trong dữ liệu là trung bình theo kỳ**, không phải giá đóng cửa
   hằng ngày: nguồn miễn phí duy nhất có sẵn. Không dùng lẫn với giá theo ngày.
-- **Có kỳ bị thiếu bản tin.** Kiểm tra liên tục (mức đổi trong bản tin phải bằng
-  chênh lệch giá) phát hiện ít nhất hai kỳ như vậy (25/3/2026, 2/7/2026) và loại
-  chúng khỏi phần đánh giá. Bản tin 26/6/2025 dùng bảng số với hai mốc giá nên
-  parser chưa đọc được.
+- **Có kỳ bị thiếu bản tin, và không tìm lại được.** Kiểm tra liên tục (mức đổi trong
+  bản tin phải bằng chênh lệch giá) phát hiện hai chỗ đứt (25/3/2026, 2/7/2026): giá có
+  đổi ở giữa nhưng MOIT không đăng bản tin nào trên mục tin. Chúng bị loại khỏi phần
+  đánh giá. Chi tiết ở [docs/data-sources.md](docs/data-sources.md). Bản tin 26/6/2025
+  dùng bảng số với hai mốc giá nên parser chưa đọc được.
 - Mẫu nhỏ (khoảng 140 kỳ), đừng suy ra quá nhiều từ một vài chữ số.
 
 Thông tin chỉ mang tính tham khảo, không phải tư vấn đầu tư.
 
 ## Việc tiếp theo
 
-- Thu thập tỷ giá USD/VND và giá futures theo ngày để dự báo thật theo `horizon_days`:
-  đây là điều kiện để dự báo `LIVE` có kỹ năng thật.
+- Thu thập giá dầu theo ngày, **kịp thời**, để dự báo thật theo `horizon_days`: đây là điều
+  kiện để dự báo `LIVE` có kỹ năng thật. Thí nghiệm trên lịch sử cho thấy Brent theo ngày
+  giảm khoảng 20% sai số ở 1 đến 3 ngày trước. Nguồn miễn phí hợp lệ (FRED/EIA) chậm
+  khoảng 8 ngày, nên chưa dùng được; xem [docs/data-sources.md](docs/data-sources.md).
 - Để bộ quét chạy và để bảng điểm `LIVE` tích luỹ qua nhiều kỳ.
 - Tìm hai bản tin bị thiếu và hỗ trợ bản tin dạng bảng của 26/6/2025.
