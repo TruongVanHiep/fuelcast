@@ -151,6 +151,7 @@
           <button class="range" data-range="1y" aria-pressed="true">1 năm</button>
           <button class="range" data-range="all" aria-pressed="false">Tất cả</button>
         </span>
+        <button id="export-csv" class="range" type="button" disabled>Xuất CSV</button>
         <span id="hist-meta" class="muted small"></span>
       </div>
       <div id="chart" role="img" aria-label="Biểu đồ giá bán lẻ theo thời gian"></div>
@@ -386,6 +387,32 @@
     chart.resize();
   }
 
+  /* ---------- xuất CSV ---------- */
+
+  /**
+   * CSV của chuỗi đang xem. Có BOM UTF-8 để Excel đọc đúng ký tự tiếng Việt. Thời
+   * điểm giữ nguyên chuỗi ISO có múi giờ (+07:00) mà API trả về, không đổi lại.
+   */
+  function toCsv(h) {
+    const header = 'effective_at,product,unit,price_vnd,delta_vnd';
+    const rows = h.points.map(p =>
+      [p.effectiveAt, h.product, h.unit, p.priceVnd, p.deltaVnd === null ? '' : p.deltaVnd].join(','));
+    return '﻿' + [header, ...rows].join('\r\n') + '\r\n';
+  }
+
+  function exportCsv() {
+    if (!lastHistory || lastHistory.points.length === 0) return;
+    const blob = new Blob([toCsv(lastHistory)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'fuelcast_' + lastHistory.product + '_' + lastHistory.from + '_' + lastHistory.to + '.csv';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function loadHistory() {
     const product = document.getElementById('product').value;
     const meta = document.getElementById('hist-meta');
@@ -395,6 +422,7 @@
       const h = await getJson('/prices/history?product=' + encodeURIComponent(product) +
                               '&from=' + fromDate(range));
       lastHistory = h;
+      document.getElementById('export-csv').disabled = h.points.length === 0;
       meta.textContent = h.points.length + ' kỳ, từ ' + dateFmt.format(Date.parse(h.from)) +
                          ' đến ' + dateFmt.format(Date.parse(h.to));
       if (h.points.length === 0) {
@@ -484,6 +512,7 @@
 
   function bindControls() {
     document.getElementById('product').addEventListener('change', loadHistory);
+    document.getElementById('export-csv').addEventListener('click', exportCsv);
     for (const b of document.querySelectorAll('button.range')) {
       b.addEventListener('click', () => {
         range = b.dataset.range;
