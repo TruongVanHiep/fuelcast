@@ -108,8 +108,8 @@ trước). So với đoán "giá không đổi":
   số liệu theo ngày (tỷ giá, giá futures) mà dự án chưa thu thập.
 - **Dự báo THẬT, trước sự kiện, hiện chưa hơn việc đoán "giá không đổi".** Mô hình chỉ
   dùng thông tin có trước giờ công bố (giá thế giới của kỳ vừa rồi) cho sai số 449 đến
-  506 đồng, so với 447 đến 514 của "không đổi", và đúng chiều khoảng 50% (tung đồng
-  xu). Toàn bộ kỹ năng ở bảng trên đến từ giá thế giới của *chính kỳ đó*, thứ không ai
+  506 đồng (bốn mặt hàng, không kể madút), so với 447 đến 514 của "không đổi", và đúng
+  chiều khoảng 50% (tung đồng xu). Toàn bộ kỹ năng ở bảng trên đến từ giá thế giới của *chính kỳ đó*, thứ không ai
   biết trước. Muốn dự báo thật cần số liệu theo ngày (tỷ giá, giá futures). Hệ thống
   vẫn ghi dự báo `LIVE` mỗi kỳ và chấm điểm, để có bằng chứng ngoài mẫu từ nay.
 - **Các dòng trong bảng `forecast` hiện đều là `REPLAY`**, tức phát lại trên lịch
@@ -127,6 +127,42 @@ trước). So với đoán "giá không đổi":
 - Mẫu nhỏ (khoảng 140 kỳ), đừng suy ra quá nhiều từ một vài chữ số.
 
 Thông tin chỉ mang tính tham khảo, không phải tư vấn đầu tư.
+
+## Bài toán khó nhất tôi gặp
+
+**Mô hình của tôi đạt 98% đúng chiều, và con số đó gần như vô nghĩa.**
+
+Tôi dựng mô hình đoán mức đổi giá bán lẻ từ mức đổi giá thế giới, đánh giá walk-forward
+(mỗi kỳ chỉ học từ các kỳ trước). Kết quả trông rất tốt: sai số 47 đến 115 đồng so với 442
+đến 508 của việc đoán "giá không đổi", đúng chiều 96 đến 100%. Không có leakage, đã có test
+chặn. Vậy mà nó không phải dự báo.
+
+Cái bẫy nằm ở chỗ đầu vào. Giá thế giới tôi dùng là **trung bình của chính kỳ đang được
+đoán**, thứ chỉ đầy đủ vào lúc bản tin ra. Mô hình giải thích một kỳ đã biết, không đoán
+trước một kỳ chưa tới. Khi tôi đo lại chỉ với thông tin có thật *trước* giờ công bố (giá
+thế giới của kỳ liền trước), kỹ năng biến mất: sai số ngang "không đổi", đúng chiều khoảng
+50%.
+
+Cách tôi xử lý, theo thứ tự:
+
+1. **Tách hai loại dự báo ngay trong schema.** Cột `kind` là `REPLAY` (phát lại lịch sử, có
+   thể lạc quan) hoặc `LIVE` (ghi trước sự kiện). Bảng điểm không bao giờ trộn hai loại,
+   và mọi phản hồi API đều kèm lời cảnh báo.
+2. **Dựng đường `LIVE` thật**: dự báo ghi trước bản tin, dấu thời gian trong DB làm chứng,
+   tự chấm bằng bản tin đầu tiên sau đó.
+3. **Đo cái có thể đạt được.** Thí nghiệm trên lịch sử cho thấy nếu có Brent theo ngày một
+   cách kịp thời thì dự báo trước 1 đến 3 ngày giảm khoảng 20% sai số và đúng chiều 71 đến
+   78%: kỹ năng thật nhưng khiêm tốn, kém xa con số 98%. Nguồn miễn phí hợp lệ (FRED/EIA)
+   chậm khoảng 8 ngày, nguồn khác (Stooq) cấm bot, nên tôi chưa đạt được. Chi tiết ở
+   [docs/data-sources.md](docs/data-sources.md).
+
+Kết quả `LIVE` đầu tiên (4 dự báo cho kỳ 15/10/2026) đúng như phép đo báo trước: mô hình
+thua "không đổi" ở 3 trong 4 mặt hàng và đúng chiều 2 trong 4. Mẫu quá nhỏ để kết luận gì,
+nhưng nhất quán, và tôi để nó hiển thị công khai thay vì giấu.
+
+Điều tôi rút ra: một con số đẹp phải được hỏi "đầu vào này có thật sự có trước sự kiện
+không". Phần lớn công sức của dự án này là dựng hạ tầng để câu hỏi đó luôn có câu trả lời
+trung thực, chứ không phải để làm cho con số đẹp hơn.
 
 ## Việc tiếp theo
 
