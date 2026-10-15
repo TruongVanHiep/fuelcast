@@ -66,3 +66,15 @@ jobs:
         with:
           name: surefire-reports
           path: fuelcast-core/target/surefire-reports
+
+  # Chỉ kiểm tra image còn dựng được, không đẩy đi đâu. Dockerfile không được test
+  # bởi job trên nên rất dễ hỏng mà không ai biết cho tới lúc cần deploy.
+  docker-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build the application image
+        run: docker build -t fuelcast-core:ci fuelcast-core
