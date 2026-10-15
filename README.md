@@ -32,7 +32,16 @@ Cần JDK 21 và Docker.
 
 ```bash
 cd fuelcast-core
-docker compose up -d            # TimescaleDB, cổng 5433 trên máy
+docker compose up -d            # cả hệ thống: DB + ứng dụng, dashboard ở http://localhost:8080
+```
+
+Ứng dụng trong compose chạy với bộ quét **bật**, tự nạp bản tin mới và chấm dự báo. Lần
+đầu build image mất vài phút (tải thư viện Maven), các lần sau dùng cache.
+
+Khi phát triển, chỉ dựng DB rồi chạy ứng dụng từ IDE hoặc dòng lệnh (tránh tranh cổng 8080):
+
+```bash
+docker compose up -d postgres   # chỉ TimescaleDB, cổng 5433 trên máy
 ./mvnw spring-boot:run          # dashboard ở http://localhost:8080, API ở /api/v1
 ./mvnw test
 ```

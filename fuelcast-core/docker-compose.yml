@@ -17,5 +17,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # Ứng dụng. `docker compose up -d` dựng cả hệ thống; khi chỉ cần DB để chạy ứng dụng
+  # từ IDE thì dùng `docker compose up -d postgres` (tránh tranh cổng 8080 với IDE).
+  app:
+    build: .
+    container_name: fuelcast-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Trong mạng của compose, DB là "postgres:5432" chứ không phải localhost:5433
+      # (5433 chỉ là cổng ánh xạ ra máy chủ).
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fuelcast
+      # Chạy nền để tự nạp bản tin mới và chấm điểm dự báo. Mặc định trong
+      # application.yaml là tắt, để test và các lệnh chạy một lần không gọi mạng.
+      FUELCAST_INGESTION_POLL_ENABLED: "true"
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      # Trang chủ tĩnh: trả 200 khi Spring đã khởi động xong, không cần DB có dữ liệu.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 5
+
 volumes:
   fuelcast-pgdata:
