@@ -1,0 +1,10 @@
+# Không đưa vào ngữ cảnh build: nặng, không cần, hoặc là thứ của riêng máy này.
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+HELP.md
+Dockerfile
+.dockerignore
+docker-compose.yml
