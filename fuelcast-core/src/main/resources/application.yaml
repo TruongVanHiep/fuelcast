@@ -48,3 +48,17 @@ fuelcast:
       # Tự đi hỏi MOIT xem có bản tin mới. Mặc định TẮT để test và các lệnh chạy một
       # lần không lén gọi mạng. Bật khi triển khai: --fuelcast.ingestion.poll.enabled=true
       enabled: false
+
+management:
+  server:
+    port: 8081          # cổng riêng, chỉ mạng nội bộ nói chuyện được
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus   # chỉ mở hai cái này, không mở env/beans/heapdump
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: fuelcast-core   # gắn nhãn cho mọi số đo, để sau này lọc theo ứng dụng

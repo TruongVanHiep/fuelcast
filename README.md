@@ -21,6 +21,7 @@ bảng điểm của mô hình. Lời cảnh báo REPLAY nằm ngay trên bảng
 | Thu thập | Quét danh sách tin moit.gov.vn, tải từng bản tin, **lưu HTML gốc**, bóc giá bán lẻ và giá thế giới |
 | Lưu trữ | PostgreSQL + TimescaleDB, schema do Flyway quản lý, nạp lại không nhân đôi (khoá tự nhiên) |
 | API đọc | `GET /api/v1/prices/current`, `/prices/history`, `/cycles/current`, `/forecasts/next`, `/accuracy/scorecard` |
+| Giám sát | Micrometer, Prometheus, Grafana: bộ quét còn sống không, bản tin mới nhất cách đây bao lâu, cảnh báo khi quá 8 ngày (xem [docs/observability.md](docs/observability.md)) |
 | Cập nhật trực tiếp | `GET /api/v1/stream/prices` (Server-Sent Events): báo khi có bản tin mới hoặc dự báo mới được tạo hay chấm; giao diện tự tải lại số liệu |
 | Lập lịch | Tự đi hỏi MOIT xem có bản tin mới và nạp nó (mặc định tắt, xem mục *Chạy*) |
 | Mô hình | Truyền dẫn giá thế giới → giá bán lẻ, đánh giá walk-forward so với "giá không đổi" |
@@ -195,7 +196,7 @@ repo này. Tôi ghi rõ chỗ khác và lý do, thay vì để người đọc t
 | React 19 + Vite + Tailwind | `fuelcast-web/`: bốn trang đọc (tổng quan, dự báo, bảng điểm, lịch sử giá). Trang tĩnh trong core vẫn còn để chạy nhanh | Chỉ làm các trang đọc, vì backend chưa có đăng nhập hay cảnh báo |
 | SSE | `GET /api/v1/stream/prices`: sự kiện `prices` và `forecasts`, chỉ là tín hiệu "có gì vừa đổi"; số liệu vẫn lấy từ REST | Làm đúng như thiết kế. Giới hạn đã biết: danh sách kết nối nằm trong bộ nhớ nên chỉ đúng khi chạy một bản ứng dụng, cùng giới hạn với bộ quét |
 | JWT + refresh, trang cảnh báo Email/Telegram, bảng xếp hạng người và mô hình | Không có | API chỉ có GET công khai và không lưu dữ liệu người dùng nên không có gì để bảo vệ; cảnh báo cần token bot bên thứ ba |
-| Actuator, Prometheus, Grafana, Loki, Tempo | Không có; chỉ log container và healthcheck | Chưa làm |
+| Actuator, Prometheus, Grafana, Loki, Tempo | Actuator, Prometheus và Grafana: số đo của JVM và của chính bộ quét, dashboard nạp từ file, bốn cảnh báo có kiểm thử. **Không có Loki và Tempo** (log xem bằng `docker compose logs`) | Loki và Tempo nặng RAM trên VPS 4 GB, và trace ít giá trị khi chỉ có một ứng dụng gọi một dịch vụ phụ. Xem [docs/observability.md](docs/observability.md) |
 | Nginx | Caddy (`deploy/`) | Tự lấy và gia hạn HTTPS, cấu hình 3 dòng |
 
 **Dịch vụ Python có giúp được không?** Tài liệu thiết kế tự nêu rủi ro "dữ liệu lịch sử quá

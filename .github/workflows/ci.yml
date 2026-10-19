@@ -85,6 +85,31 @@ jobs:
       - name: Build the forecast image
         run: docker build -t fuelcast-forecast:ci fuelcast-forecast
 
+  # Cấu hình giám sát: cú pháp của Prometheus, luật cảnh báo (kiểm thử bằng promtool: dựng chuỗi số
+  # đo giả và nói trước luật nào phải kêu lúc nào), và dashboard Grafana phải là JSON hợp lệ.
+  # Phiên bản image khớp với docker-compose.
+  observability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check the Prometheus config and alert rules
+        run: >-
+          docker run --rm --entrypoint promtool
+          -v "$PWD/observability:/etc/prometheus:ro"
+          prom/prometheus:v3.13.4 check config /etc/prometheus/prometheus.yml
+
+      - name: Test the alert rules
+        run: >-
+          docker run --rm --entrypoint promtool
+          -v "$PWD/observability:/etc/prometheus:ro" -w /etc/prometheus
+          prom/prometheus:v3.13.4 test rules alerts.test.yml
+
+      - name: Check the Grafana dashboard is valid JSON
+        run: jq empty observability/grafana/dashboards/fuelcast.json
+
   # Dịch vụ dự báo Python. Chạy trên 3.12, đúng phiên bản của image Docker.
   forecast:
     runs-on: ubuntu-24.04

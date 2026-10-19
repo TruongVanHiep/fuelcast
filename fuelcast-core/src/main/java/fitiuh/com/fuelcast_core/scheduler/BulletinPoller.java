@@ -8,6 +8,9 @@ import fitiuh.com.fuelcast_core.service.scraper.BulletinLink;
 import fitiuh.com.fuelcast_core.service.scraper.ListingPage;
 import fitiuh.com.fuelcast_core.service.scraper.MoitBulletinScraper;
 import fitiuh.com.fuelcast_core.stream.StreamEvents;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +26,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Tự đi hỏi MOIT xem có bản tin mới và nạp nó, dùng lại đúng đường ống của
@@ -60,6 +64,20 @@ public class BulletinPoller {
 
     private volatile Instant lastPolledAt;
 
+    private final Counter pollOk;
+    private final Counter pollError;
+    private final Counter bulletinsIngested;
+    private final Counter bulletinsFailed;
+    private final Counter forecastsCreated;
+    private final Counter forecastsGraded;
+
+    /**
+     * Lúc (giây epoch) lượt quét thành công gần nhất. Là timestamp chứ không phải "đã bao lâu":
+     * xem BulletinFreshnessMetrics. Bằng 0 cho tới lượt quét thành công đầu tiên (khoảng 30 giây
+     * sau khi khởi động), nên cảnh báo trên số đo này cần "for" đủ dài.
+     */
+    private final AtomicLong lastSuccessfulPollAt = new AtomicLong();
+
     /** Kết quả một lượt hỏi. skipped = đã nạp rồi hoặc đã thử quá số lần cho phép. */
     public record PollResult(int found, int skipped, int ingested, int failed) { }
 
@@ -69,6 +87,7 @@ public class BulletinPoller {
                           LiveForecastService liveForecasts,
                           ApplicationEventPublisher events,
                           Clock clock,
+                          MeterRegistry registry,
                           @Value("${fuelcast.ingestion.request-gap:PT5S}") Duration requestGap) {
         this.scraper = scraper;
         this.ingestion = ingestion;
@@ -77,6 +96,25 @@ public class BulletinPoller {
         this.events = events;
         this.clock = clock;
         this.requestGap = requestGap;
+        this.pollOk = Counter.builder("fuelcast.poll.runs")
+                .tag("result", "ok")
+                .register(registry);
+        this.pollError = Counter.builder("fuelcast.poll.runs")
+                .tag("result", "error")
+                .register(registry);
+        this.bulletinsIngested = Counter.builder("fuelcast.bulletins.ingested")
+                .register(registry);
+        // Bản tin MOIT mà parser không đọc được đáng cảnh báo hơn nhiều so với lỗi mạng thoáng qua.
+        this.bulletinsFailed = Counter.builder("fuelcast.bulletins.failed")
+                .register(registry);
+        // Đếm theo từng (mặt hàng, mô hình) như LiveForecastService.RefreshResult.
+        this.forecastsCreated = Counter.builder("fuelcast.forecasts.created")
+                .register(registry);
+        this.forecastsGraded = Counter.builder("fuelcast.forecasts.graded")
+                .register(registry);
+        Gauge.builder("fuelcast.poll.last_success.timestamp.seconds", lastSuccessfulPollAt, AtomicLong::get)
+                .description("Thời điểm lượt quét MOIT thành công gần nhất, giây epoch (0 nếu chưa có)")
+                .register(registry);
     }
 
     /**
@@ -96,6 +134,11 @@ public class BulletinPoller {
 
         try {
             PollResult r = poll();
+            pollOk.increment();
+            lastSuccessfulPollAt.set(now.getEpochSecond());
+            if (r.failed() > 0) {
+                bulletinsFailed.increment(r.failed());
+            }
             if (r.ingested() > 0 || r.failed() > 0) {
                 log.info("Quét bản tin: thấy {}, bỏ qua {}, nạp mới {}, lỗi {}",
                         r.found(), r.skipped(), r.ingested(), r.failed());
@@ -103,6 +146,7 @@ public class BulletinPoller {
                 log.debug("Quét bản tin: thấy {}, không có gì mới", r.found());
             }
             if (r.ingested() > 0) {
+                bulletinsIngested.increment(r.ingested());
                 // Đã commit xong trong ingestion.ingest: trình duyệt hỏi lại sẽ thấy giá mới.
                 publish(new StreamEvents.PricesUpdated(OffsetDateTime.now(clock), r.ingested()));
             }
@@ -110,6 +154,7 @@ public class BulletinPoller {
             Thread.currentThread().interrupt();
             return;
         } catch (IOException | RuntimeException e) {
+            pollError.increment();
             // Không ném ra ngoài: một lần lỗi không được làm chết bộ lập lịch.
             log.warn("Quét bản tin thất bại, sẽ thử lại đúng nhịp: {}", e.toString());
         }
@@ -124,6 +169,8 @@ public class BulletinPoller {
     private void refreshLiveForecasts() {
         try {
             LiveForecastService.RefreshResult r = liveForecasts.refresh();
+            forecastsCreated.increment(r.created());
+            forecastsGraded.increment(r.graded());
             if (r.graded() > 0 || r.created() > 0) {
                 log.info("Dự báo LIVE: chấm {}, tạo mới {}, đã có {}, không dự báo được {}",
                         r.graded(), r.created(), r.existing(), r.skipped());

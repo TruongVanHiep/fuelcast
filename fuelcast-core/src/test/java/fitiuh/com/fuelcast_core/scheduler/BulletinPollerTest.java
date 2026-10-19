@@ -10,10 +10,11 @@ import fitiuh.com.fuelcast_core.service.scraper.BulletinLink;
 import fitiuh.com.fuelcast_core.service.scraper.ListingPage;
 import fitiuh.com.fuelcast_core.service.scraper.MoitBulletinScraper;
 import fitiuh.com.fuelcast_core.stream.StreamEvents;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.io.IOException;
@@ -48,10 +49,19 @@ class BulletinPollerTest {
 
     private final LiveForecastService live = mock(LiveForecastService.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final MeterRegistry registry = new SimpleMeterRegistry();
 
     private BulletinPoller pollerAt(OffsetDateTime now) {
         return new BulletinPoller(scraper, ingestion, runs, live, events,
-                Clock.fixed(now.toInstant(), VN), Duration.ZERO);
+                Clock.fixed(now.toInstant(), VN), registry, Duration.ZERO);
+    }
+
+    private double count(String name, String... tags) {
+        return registry.counter(name, tags).count();
+    }
+
+    private double gauge(String name) {
+        return registry.get(name).gauge().value();
     }
 
     private static BulletinLink link(String url, int day) {
@@ -196,6 +206,103 @@ class BulletinPollerTest {
         pollerAt(THURSDAY_3PM).tick();       // không được ném
 
         verify(live).refresh();
+    }
+
+    // ───────────────────────── số đo (Micrometer) ─────────────────────────
+
+    /** Số đo phải có mặt ngay từ đầu với giá trị 0: nếu chỉ xuất hiện sau lần tăng đầu thì rate() sai. */
+    @Test
+    void metricsExistFromTheStartAtZero() {
+        pollerAt(THURSDAY_3PM);
+
+        assertThat(count("fuelcast.poll.runs", "result", "ok")).isZero();
+        assertThat(count("fuelcast.poll.runs", "result", "error")).isZero();
+        assertThat(count("fuelcast.bulletins.ingested")).isZero();
+        assertThat(count("fuelcast.bulletins.failed")).isZero();
+        assertThat(gauge("fuelcast.poll.last_success.timestamp.seconds")).isZero();
+    }
+
+    @Test
+    void countsASuccessfulPollAndRecordsWhenItHappened() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        assertThat(count("fuelcast.poll.runs", "result", "ok")).isEqualTo(1);
+        assertThat(count("fuelcast.poll.runs", "result", "error")).isZero();
+        assertThat(gauge("fuelcast.poll.last_success.timestamp.seconds"))
+                .isEqualTo(THURSDAY_3PM.toEpochSecond());
+    }
+
+    /** Lỗi mạng là "error", và dấu thời gian của lượt thành công cuối KHÔNG được nhích lên. */
+    @Test
+    void countsAFailedPollAsAnErrorWithoutTouchingTheLastSuccess() throws Exception {
+        when(scraper.fetchListingPage(1)).thenThrow(new IOException("MOIT trả HTTP 503"));
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        assertThat(count("fuelcast.poll.runs", "result", "error")).isEqualTo(1);
+        assertThat(count("fuelcast.poll.runs", "result", "ok")).isZero();
+        assertThat(gauge("fuelcast.poll.last_success.timestamp.seconds")).isZero();
+    }
+
+    @Test
+    void countsIngestedBulletinsByHowManyWereIngested() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page(link(NEW_URL, 8), link(OLD_URL, 1)));
+        when(ingestion.ingest(anyString())).thenReturn(ok());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        assertThat(count("fuelcast.bulletins.ingested")).isEqualTo(2);
+        assertThat(count("fuelcast.bulletins.failed")).isZero();
+    }
+
+    /**
+     * Một bản tin MOIT mà parser không đọc được: lượt quét vẫn là "ok" (việc hỏi MOIT chạy được),
+     * nhưng phải có số đo riêng để cảnh báo, vì đó là lỗi đáng lo hơn lỗi mạng.
+     */
+    @Test
+    void aBulletinThatFailsToParseIsCountedSeparatelyFromAPollError() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page(link(NEW_URL, 8)));
+        when(ingestion.ingest(NEW_URL)).thenReturn(failed());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        assertThat(count("fuelcast.bulletins.failed")).isEqualTo(1);
+        assertThat(count("fuelcast.bulletins.ingested")).isZero();
+        assertThat(count("fuelcast.poll.runs", "result", "ok")).isEqualTo(1);
+        assertThat(count("fuelcast.poll.runs", "result", "error")).isZero();
+    }
+
+    @Test
+    void countsForecastsCreatedAndGraded() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page());
+        when(live.refresh()).thenReturn(new LiveForecastService.RefreshResult(4, 8, 2, 1));
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        assertThat(count("fuelcast.forecasts.created")).isEqualTo(8);   // "đã có" và "bỏ qua" không tính
+        assertThat(count("fuelcast.forecasts.graded")).isEqualTo(4);
+    }
+
+    @Test
+    void forecastCountersStartAtZero() {
+        pollerAt(THURSDAY_3PM);
+
+        assertThat(count("fuelcast.forecasts.created")).isZero();
+        assertThat(count("fuelcast.forecasts.graded")).isZero();
+    }
+
+    /** Bị ngắt lúc tắt ứng dụng không phải lỗi quét: không được làm bộ đếm lỗi nhảy lên. */
+    @Test
+    void anInterruptionIsNotCountedAsAPollError() throws Exception {
+        when(scraper.fetchListingPage(1)).thenThrow(new InterruptedException());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        assertThat(count("fuelcast.poll.runs", "result", "error")).isZero();
+        assertThat(count("fuelcast.poll.runs", "result", "ok")).isZero();
+        Thread.interrupted();       // xoá cờ ngắt để không ảnh hưởng test khác
     }
 
     // ───────────────────────── sự kiện cho SSE ─────────────────────────

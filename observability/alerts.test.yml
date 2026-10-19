@@ -1,0 +1,129 @@
+# Kiểm thử luật cảnh báo bằng promtool: dựng chuỗi số đo giả, nói trước tại thời điểm nào luật phải
+# kêu hay im. Chạy:  promtool test rules alerts.test.yml   (CI chạy sẵn, xem .github/workflows/ci.yml)
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── NoNewBulletin ──────────────────────────────────────────────────────────────────────────
+  # Bản tin có hiệu lực ở thời điểm 0 và không bao giờ có bản mới: tuổi của nó bằng đúng thời gian trôi.
+  # Mẫu phải dày (mỗi phút), không thưa 1 giờ: promtool, như Prometheus thật, coi chuỗi là "hết
+  # hạn" sau 5 phút không có mẫu mới, nên chuỗi thưa làm điều kiện `for` không bao giờ đủ dài.
+  - interval: 1m
+    input_series:
+      - series: 'fuelcast_bulletin_last_effective_timestamp_seconds{application="fuelcast-core"}'
+        values: '0x13000'
+    alert_rule_test:
+      - eval_time: 7d
+        alertname: NoNewBulletin
+        exp_alerts: []                # mới 7 ngày: bình thường
+      - eval_time: 8d30m
+        alertname: NoNewBulletin
+        exp_alerts: []                # quá 8 ngày nhưng chưa đủ 1 giờ `for`: mới chỉ "chờ"
+      - eval_time: 8d2h
+        alertname: NoNewBulletin
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              application: fuelcast-core
+            exp_annotations:
+              summary: "Đã hơn 8 ngày không có bản tin điều hành giá mới"
+              description: "Bản tin mới nhất có hiệu lực cách đây 8d 2h 0m 0s."
+
+  # Giá trị luôn bằng "bây giờ" (bản tin vừa mới ra): không bao giờ được kêu.
+  - interval: 1m
+    input_series:
+      - series: 'fuelcast_bulletin_last_effective_timestamp_seconds{application="fuelcast-core"}'
+        values: '0+60x18000'
+    alert_rule_test:
+      - eval_time: 12d
+        alertname: NoNewBulletin
+        exp_alerts: []
+
+  # Chưa có bản tin nào thì không có chuỗi số đo này: im lặng, không kêu oan (không được coi
+  # "không có số liệu" là "bản tin năm 1970"). Chuỗi `up` chỉ để bài test có dữ liệu đầu vào.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="fuelcast-core"}'
+        values: '1x18000'
+    alert_rule_test:
+      - eval_time: 12d
+        alertname: NoNewBulletin
+        exp_alerts: []
+
+  # ── PollerStalled ──────────────────────────────────────────────────────────────────────────
+  - interval: 1m
+    input_series:
+      - series: 'fuelcast_poll_last_success_timestamp_seconds{application="fuelcast-core"}'
+        values: '0x1200'
+    alert_rule_test:
+      - eval_time: 12h
+        alertname: PollerStalled
+        exp_alerts: []
+      - eval_time: 13h10m
+        alertname: PollerStalled
+        exp_alerts: []                # quá 13 giờ nhưng chưa đủ 15 phút `for`
+      - eval_time: 13h20m
+        alertname: PollerStalled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              application: fuelcast-core
+            exp_annotations:
+              summary: "Bộ quét MOIT không có lượt thành công nào trong hơn 13 giờ"
+              description: "Lượt quét thành công gần nhất cách đây 13h 20m 0s."
+
+  # Bộ quét chạy đều (giá trị luôn bằng "bây giờ"): không kêu.
+  - interval: 1m
+    input_series:
+      - series: 'fuelcast_poll_last_success_timestamp_seconds{application="fuelcast-core"}'
+        values: '0+60x1200'
+    alert_rule_test:
+      - eval_time: 18h
+        alertname: PollerStalled
+        exp_alerts: []
+
+  # ── FuelcastDown ───────────────────────────────────────────────────────────────────────────
+  - interval: 1m
+    input_series:
+      - series: 'up{job="fuelcast-core"}'
+        values: '1x10 0x20'           # sống 10 phút rồi chết
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: FuelcastDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: FuelcastDown
+        exp_alerts: []                # mới chết 1 phút, chưa đủ 2 phút `for`
+      - eval_time: 15m
+        alertname: FuelcastDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: fuelcast-core
+            exp_annotations:
+              summary: "Ứng dụng FuelCast không trả lời Prometheus"
+              description: "Prometheus không quét được fuelcast-core trong hơn 2 phút."
+
+  # ── BulletinParseFailing ───────────────────────────────────────────────────────────────────
+  - interval: 1m
+    input_series:
+      - series: 'fuelcast_bulletins_failed_total{application="fuelcast-core"}'
+        values: '0x10 1x200'          # một bản tin hỏng ở phút 11
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: BulletinParseFailing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: BulletinParseFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              application: fuelcast-core
+            exp_annotations:
+              summary: "Có bản tin MOIT không đọc được"
+              description: "Trong 1 giờ qua có 1 lần nạp bản tin thất bại."
+      - eval_time: 2h
+        alertname: BulletinParseFailing
+        exp_alerts: []                # đã qua hơn 1 giờ kể từ lúc hỏng: tự hết kêu
