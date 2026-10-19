@@ -167,6 +167,39 @@ nhưng nhất quán, và tôi để nó hiển thị công khai thay vì giấu.
 không". Phần lớn công sức của dự án này là dựng hạ tầng để câu hỏi đó luôn có câu trả lời
 trung thực, chứ không phải để làm cho con số đẹp hơn.
 
+## Khác với thiết kế ban đầu
+
+Tài liệu thiết kế ban đầu (v1.0, 22/09/2026) vẽ một hệ thống rộng hơn những gì có trong
+repo này. Tôi ghi rõ chỗ khác và lý do, thay vì để người đọc tự phát hiện.
+
+| Thiết kế | Thực tế | Vì sao |
+|---|---|---|
+| RabbitMQ | Không dùng | Mọi module chạy chung một tiến trình; broker chỉ thêm chi phí vận hành |
+| Redis (cache, rate-limit) | Không dùng | API chỉ đọc vài trăm dòng, chưa có số đo nào cho thấy cần cache |
+| Quartz | `@Scheduled` với lịch động (`PollSchedule`) | Một tiến trình, một lịch; Quartz đáng dùng khi cần lưu job trong DB hoặc chạy cụm |
+| Dịch vụ Python (FastAPI) với rule engine + LightGBM | Mô hình hồi quy OLS walk-forward viết bằng Java, nằm trong `fuelcast-core` | Xem ngay dưới bảng |
+| Giá Platts/MOPS trung bình 7 ngày | Giá thế giới trung bình **của kỳ**, đọc từ bản tin MOIT (`MOIT_CYCLE_AVG`) | Không có nguồn MOPS miễn phí; chính phần rủi ro của thiết kế đã dự đoán và dặn ghi rõ hạn chế này |
+| Vùng 1 và vùng 2, tỷ giá Vietcombank, Brent/RBOB, Petrolimex | Chỉ nạp giá vùng 1 từ MOIT (schema đã có chỗ cho vùng 2) | Mô hình hiện chưa dùng những dữ liệu đó; Brent theo ngày mới thử trên lịch sử (xem `docs/data-sources.md`) |
+| React 19 + Vite + Tailwind | Một trang tĩnh do Spring phục vụ, biểu đồ bằng ECharts | Không có bước build riêng, một image duy nhất; đủ cho 4 khối thông tin |
+| SSE, JWT + refresh, trang cảnh báo Email/Telegram, bảng xếp hạng người và mô hình | Không có | API chỉ có 5 endpoint GET công khai và không lưu dữ liệu người dùng nên không có gì để bảo vệ; cảnh báo cần token bot bên thứ ba |
+| Actuator, Prometheus, Grafana, Loki, Tempo | Không có; chỉ log container và healthcheck | Chưa làm |
+| Nginx | Caddy (`deploy/`) | Tự lấy và gia hạn HTTPS, cấu hình 3 dòng |
+
+**Vì sao dự báo ở Java, không phải LightGBM.** Tài liệu thiết kế tự nêu rủi ro "dữ liệu lịch
+sử quá ít để train ML" (cỡ 150 mẫu) và dặn dùng mô hình đơn giản, regularize mạnh. Thực tế
+còn hơn thế: nút thắt của bài toán không phải sức mạnh mô hình mà là **thông tin có trước giờ
+công bố** (xem mục *Bài toán khó nhất*). Một mô hình mạnh hơn trên cùng đầu vào không sửa
+được điều đó, và trên vài trăm kỳ cho năm mặt hàng thì dễ quá khớp hơn là khá hơn. Thêm một
+dịch vụ Python sẽ tăng độ phức tạp mà không cải thiện con số nào. Lớp "rule engine" (công thức
+giá cơ sở, waterfall đóng góp) cũng chưa làm vì cần giá Platts theo ngày, thuế và premium
+nhập khẩu mà tôi không có nguồn hợp lệ.
+
+**Giữ đúng theo thiết kế:** TimescaleDB và Flyway; lưu bản gốc của mỗi bản tin trước khi
+parse; tách người công bố giá thành bảng `price_publisher` thay vì gắn cứng "Bộ Công
+Thương"; đánh giá walk-forward, không xáo trộn dữ liệu; bảng điểm công khai so với
+baseline "không đổi". Thiết kế viết rằng mô hình không thắng baseline thì vô dụng, và kết
+quả `LIVE` đầu tiên đúng là thua baseline ở 3 trong 4 mặt hàng; tôi để nó hiển thị công khai.
+
 ## Việc tiếp theo
 
 - Thu thập giá dầu theo ngày, **kịp thời**, để dự báo thật theo `horizon_days`: đây là điều
