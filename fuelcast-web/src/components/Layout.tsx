@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { LiveIndicator, NewBulletinBanner } from './LiveIndicator'
 
 const links = [
   { to: '/', label: 'Tổng quan', end: true },
@@ -31,8 +32,12 @@ export default function Layout() {
               </NavLink>
             ))}
           </nav>
+          <span className="ml-auto">
+            <LiveIndicator />
+          </span>
         </div>
       </header>
+      <NewBulletinBanner />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />

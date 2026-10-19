@@ -6,12 +6,15 @@ import Countdown from '../components/Countdown'
 import Notice from '../components/Notice'
 import { Async, Card, Empty } from '../components/StateBlocks'
 import { useAsync } from '../hooks/useAsync'
+import { useLive } from '../live/LiveContext'
 import { formatDate, formatDateTime, formatDelta, formatNumber } from '../lib/format'
 
 export default function Dashboard() {
-  const cycle = useAsync(getCurrentCycle)
-  const prices = useAsync(getCurrentPrices)
-  const forecasts = useAsync(getNextForecasts)
+  // Giá và kỳ điều hành đổi khi có bản tin mới; dự báo đổi khi được tạo hoặc chấm điểm.
+  const { pricesVersion, forecastsVersion } = useLive()
+  const cycle = useAsync(getCurrentCycle, pricesVersion)
+  const prices = useAsync(getCurrentPrices, pricesVersion)
+  const forecasts = useAsync(getNextForecasts, forecastsVersion)
 
   return (
     <div className="space-y-4">

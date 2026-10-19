@@ -17,8 +17,12 @@ type Settled<T> = { load: unknown; tick: number; state: AsyncState<T> }
  *
  * Kết quả được gắn với `load` và lần tải (tick) đã sinh ra nó. Khi `load` đổi, kết quả cũ
  * không còn khớp nên hook tự trả "loading" mà không cần setState đồng bộ trong effect.
+ *
+ * `refreshKey` khác với việc đổi `load`: đổi nó cũng tải lại, nhưng dữ liệu cũ VẪN ở trên màn
+ * hình tới khi dữ liệu mới về. Dùng cho cập nhật trực tiếp (SSE): số liệu tự đổi tại chỗ, không
+ * nháy "đang tải". Nếu lần tải lại lỗi thì giữ dữ liệu cũ thay vì thay bằng thông báo lỗi.
  */
-export function useAsync<T>(load: (signal: AbortSignal) => Promise<T>) {
+export function useAsync<T>(load: (signal: AbortSignal) => Promise<T>, refreshKey = 0) {
   const [settled, setSettled] = useState<Settled<T> | null>(null)
   const [tick, setTick] = useState(0)
 
@@ -29,10 +33,15 @@ export function useAsync<T>(load: (signal: AbortSignal) => Promise<T>) {
       .catch((error: unknown) => {
         // Request bị huỷ có chủ ý (đổi lựa chọn, gỡ component) thì không phải lỗi.
         if (controller.signal.aborted) return
-        setSettled({ load, tick, state: { status: 'error', message: describeError(error) } })
+        setSettled((previous) =>
+          // Làm mới ngầm thất bại: dữ liệu đang hiện vẫn đúng tới lúc đó, đừng xoá nó đi.
+          previous && previous.load === load && previous.tick === tick && previous.state.status === 'ready'
+            ? previous
+            : { load, tick, state: { status: 'error', message: describeError(error) } },
+        )
       })
     return () => controller.abort()
-  }, [load, tick])
+  }, [load, tick, refreshKey])
 
   const reload = useCallback(() => setTick((t) => t + 1), [])
 

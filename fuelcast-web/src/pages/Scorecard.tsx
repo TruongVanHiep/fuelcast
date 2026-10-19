@@ -6,6 +6,7 @@ import AccuracyChart from '../components/charts/AccuracyChart'
 import Notice from '../components/Notice'
 import { Async, Card, Empty } from '../components/StateBlocks'
 import { useAsync } from '../hooks/useAsync'
+import { useLive } from '../live/LiveContext'
 import { formatDate, formatNumber } from '../lib/format'
 
 const kindLabel: Record<ForecastKind, string> = {
@@ -14,7 +15,9 @@ const kindLabel: Record<ForecastKind, string> = {
 }
 
 export default function Scorecard() {
-  const scorecard = useAsync(getScorecard)
+  // Bảng điểm đổi khi một dự báo LIVE được chấm, tức cùng sự kiện "forecasts".
+  const { forecastsVersion } = useLive()
+  const scorecard = useAsync(getScorecard, forecastsVersion)
   const [chosen, setChosen] = useState<ForecastKind | null>(null)
 
   return (

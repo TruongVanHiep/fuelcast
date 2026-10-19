@@ -20,7 +20,8 @@ bảng điểm của mô hình. Lời cảnh báo REPLAY nằm ngay trên bảng
 |---|---|
 | Thu thập | Quét danh sách tin moit.gov.vn, tải từng bản tin, **lưu HTML gốc**, bóc giá bán lẻ và giá thế giới |
 | Lưu trữ | PostgreSQL + TimescaleDB, schema do Flyway quản lý, nạp lại không nhân đôi (khoá tự nhiên) |
-| API đọc | `GET /api/v1/prices/current`, `/prices/history`, `/cycles/current`, `/accuracy/scorecard` |
+| API đọc | `GET /api/v1/prices/current`, `/prices/history`, `/cycles/current`, `/forecasts/next`, `/accuracy/scorecard` |
+| Cập nhật trực tiếp | `GET /api/v1/stream/prices` (Server-Sent Events): báo khi có bản tin mới hoặc dự báo mới được tạo hay chấm; giao diện tự tải lại số liệu |
 | Lập lịch | Tự đi hỏi MOIT xem có bản tin mới và nạp nó (mặc định tắt, xem mục *Chạy*) |
 | Mô hình | Truyền dẫn giá thế giới → giá bán lẻ, đánh giá walk-forward so với "giá không đổi" |
 | Dự báo LIVE | Dự báo cho kỳ tới được tạo **trước** bản tin, tự chấm điểm khi bản tin ra (`/forecasts/next`) |
@@ -192,7 +193,8 @@ repo này. Tôi ghi rõ chỗ khác và lý do, thay vì để người đọc t
 | Giá Platts/MOPS trung bình 7 ngày | Giá thế giới trung bình **của kỳ**, đọc từ bản tin MOIT (`MOIT_CYCLE_AVG`) | Không có nguồn MOPS miễn phí; chính phần rủi ro của thiết kế đã dự đoán và dặn ghi rõ hạn chế này |
 | Vùng 1 và vùng 2, tỷ giá Vietcombank, Brent/RBOB, Petrolimex | Chỉ nạp giá vùng 1 từ MOIT (schema đã có chỗ cho vùng 2) | Mô hình hiện chưa dùng những dữ liệu đó; Brent theo ngày mới thử trên lịch sử (xem `docs/data-sources.md`) |
 | React 19 + Vite + Tailwind | `fuelcast-web/`: bốn trang đọc (tổng quan, dự báo, bảng điểm, lịch sử giá). Trang tĩnh trong core vẫn còn để chạy nhanh | Chỉ làm các trang đọc, vì backend chưa có đăng nhập hay cảnh báo |
-| SSE, JWT + refresh, trang cảnh báo Email/Telegram, bảng xếp hạng người và mô hình | Không có | API chỉ có 5 endpoint GET công khai và không lưu dữ liệu người dùng nên không có gì để bảo vệ; cảnh báo cần token bot bên thứ ba |
+| SSE | `GET /api/v1/stream/prices`: sự kiện `prices` và `forecasts`, chỉ là tín hiệu "có gì vừa đổi"; số liệu vẫn lấy từ REST | Làm đúng như thiết kế. Giới hạn đã biết: danh sách kết nối nằm trong bộ nhớ nên chỉ đúng khi chạy một bản ứng dụng, cùng giới hạn với bộ quét |
+| JWT + refresh, trang cảnh báo Email/Telegram, bảng xếp hạng người và mô hình | Không có | API chỉ có GET công khai và không lưu dữ liệu người dùng nên không có gì để bảo vệ; cảnh báo cần token bot bên thứ ba |
 | Actuator, Prometheus, Grafana, Loki, Tempo | Không có; chỉ log container và healthcheck | Chưa làm |
 | Nginx | Caddy (`deploy/`) | Tự lấy và gia hạn HTTPS, cấu hình 3 dòng |
 

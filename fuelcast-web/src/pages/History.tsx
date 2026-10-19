@@ -4,10 +4,13 @@ import type { PriceHistory } from '../api/types'
 import PriceChart from '../components/charts/PriceChart'
 import { Async, Card, Empty } from '../components/StateBlocks'
 import { useAsync } from '../hooks/useAsync'
+import { useLive } from '../live/LiveContext'
 import { formatDate } from '../lib/format'
 
 export default function History() {
-  const products = useAsync(getCurrentPrices)
+  // Có bản tin mới thì thêm một điểm vào chuỗi: tải lại cả danh sách mặt hàng và biểu đồ.
+  const { pricesVersion } = useLive()
+  const products = useAsync(getCurrentPrices, pricesVersion)
   const [chosen, setChosen] = useState<string | null>(null)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -23,7 +26,7 @@ export default function History() {
         : Promise.resolve(null),
     [product, from, to],
   )
-  const history = useAsync(loadHistory)
+  const history = useAsync(loadHistory, pricesVersion)
 
   return (
     <div className="space-y-4">
