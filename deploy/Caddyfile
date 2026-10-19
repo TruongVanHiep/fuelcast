@@ -7,5 +7,9 @@
 
 	# "web" là tên service trong docker-compose.prod.yml; Docker tự phân giải tên đó
 	# thành địa chỉ của container nginx phục vụ giao diện. nginx lại chuyển /api sang ứng dụng.
-	reverse_proxy web:8080
+	# flush_interval -1: đẩy dữ liệu xuống trình duyệt ngay, không gom đệm. Cần cho luồng sự kiện
+	# trực tiếp (SSE, /api/v1/stream/prices): thiếu nó các sự kiện có thể bị giữ lại ở proxy.
+	reverse_proxy web:8080 {
+		flush_interval -1
+	}
 }

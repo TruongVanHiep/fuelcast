@@ -3,6 +3,7 @@ package fitiuh.com.fuelcast_core.api;
 import fitiuh.com.fuelcast_core.service.InvalidDateRangeException;
 import fitiuh.com.fuelcast_core.service.NoCycleDataException;
 import fitiuh.com.fuelcast_core.service.ProductNotFoundException;
+import fitiuh.com.fuelcast_core.stream.TooManyStreamsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,6 +31,13 @@ public class ApiExceptionHandler {
     public ProblemDetail noCycleData(NoCycleDataException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
         problem.setTitle("Chưa có dữ liệu kỳ điều hành");
+        return problem;
+    }
+
+    @ExceptionHandler(TooManyStreamsException.class)
+    public ProblemDetail tooManyStreams(TooManyStreamsException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
+        problem.setTitle("Quá nhiều kết nối theo dõi");
         return problem;
     }
 

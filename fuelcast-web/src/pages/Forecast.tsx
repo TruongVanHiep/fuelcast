@@ -3,10 +3,12 @@ import { DirectionBadge, Pill } from '../components/Badges'
 import Notice from '../components/Notice'
 import { Async, Card, Empty } from '../components/StateBlocks'
 import { useAsync } from '../hooks/useAsync'
+import { useLive } from '../live/LiveContext'
 import { formatDateTime, formatDelta, formatNumber } from '../lib/format'
 
 export default function Forecast() {
-  const forecasts = useAsync(getNextForecasts)
+  const { forecastsVersion } = useLive()
+  const forecasts = useAsync(getNextForecasts, forecastsVersion)
 
   return (
     <div className="space-y-4">

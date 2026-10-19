@@ -7,10 +7,12 @@ import fitiuh.com.fuelcast_core.service.BulletinIngestionService;
 import fitiuh.com.fuelcast_core.service.scraper.BulletinLink;
 import fitiuh.com.fuelcast_core.service.scraper.ListingPage;
 import fitiuh.com.fuelcast_core.service.scraper.MoitBulletinScraper;
+import fitiuh.com.fuelcast_core.stream.StreamEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +20,7 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 
@@ -51,6 +54,7 @@ public class BulletinPoller {
     private final BulletinIngestionService ingestion;
     private final IngestionRunRepository runs;
     private final LiveForecastService liveForecasts;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
     private final Duration requestGap;
 
@@ -63,12 +67,14 @@ public class BulletinPoller {
                           BulletinIngestionService ingestion,
                           IngestionRunRepository runs,
                           LiveForecastService liveForecasts,
+                          ApplicationEventPublisher events,
                           Clock clock,
                           @Value("${fuelcast.ingestion.request-gap:PT5S}") Duration requestGap) {
         this.scraper = scraper;
         this.ingestion = ingestion;
         this.runs = runs;
         this.liveForecasts = liveForecasts;
+        this.events = events;
         this.clock = clock;
         this.requestGap = requestGap;
     }
@@ -96,6 +102,10 @@ public class BulletinPoller {
             } else {
                 log.debug("Quét bản tin: thấy {}, không có gì mới", r.found());
             }
+            if (r.ingested() > 0) {
+                // Đã commit xong trong ingestion.ingest: trình duyệt hỏi lại sẽ thấy giá mới.
+                publish(new StreamEvents.PricesUpdated(OffsetDateTime.now(clock), r.ingested()));
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return;
@@ -117,9 +127,22 @@ public class BulletinPoller {
             if (r.graded() > 0 || r.created() > 0) {
                 log.info("Dự báo LIVE: chấm {}, tạo mới {}, đã có {}, không dự báo được {}",
                         r.graded(), r.created(), r.existing(), r.skipped());
+                publish(new StreamEvents.ForecastsUpdated(OffsetDateTime.now(clock), r.created(), r.graded()));
             }
         } catch (RuntimeException e) {
             log.warn("Làm mới dự báo LIVE thất bại: {}", e.toString());
+        }
+    }
+
+    /**
+     * Báo cho các trình duyệt đang theo dõi. Lỗi ở đây (một bộ lắng nghe hỏng) không được làm
+     * hỏng lượt quét đã xong; SSE là phần phụ, việc nạp dữ liệu mới là phần chính.
+     */
+    private void publish(Object event) {
+        try {
+            events.publishEvent(event);
+        } catch (RuntimeException e) {
+            log.warn("Không đẩy được sự kiện {}: {}", event.getClass().getSimpleName(), e.toString());
         }
     }
 

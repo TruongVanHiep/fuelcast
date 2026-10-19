@@ -9,8 +9,12 @@ import fitiuh.com.fuelcast_core.service.BulletinIngestionService.Outcome;
 import fitiuh.com.fuelcast_core.service.scraper.BulletinLink;
 import fitiuh.com.fuelcast_core.service.scraper.ListingPage;
 import fitiuh.com.fuelcast_core.service.scraper.MoitBulletinScraper;
+import fitiuh.com.fuelcast_core.stream.StreamEvents;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.io.IOException;
 import java.time.Clock;
@@ -22,6 +26,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
@@ -42,9 +47,10 @@ class BulletinPollerTest {
     private final IngestionRunRepository runs = mock(IngestionRunRepository.class);
 
     private final LiveForecastService live = mock(LiveForecastService.class);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
 
     private BulletinPoller pollerAt(OffsetDateTime now) {
-        return new BulletinPoller(scraper, ingestion, runs, live,
+        return new BulletinPoller(scraper, ingestion, runs, live, events,
                 Clock.fixed(now.toInstant(), VN), Duration.ZERO);
     }
 
@@ -190,6 +196,71 @@ class BulletinPollerTest {
         pollerAt(THURSDAY_3PM).tick();       // không được ném
 
         verify(live).refresh();
+    }
+
+    // ───────────────────────── sự kiện cho SSE ─────────────────────────
+
+    @Test
+    void announcesNewPricesOnlyWhenABulletinWasActuallyIngested() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page(link(NEW_URL, 8)));
+        when(ingestion.ingest(NEW_URL)).thenReturn(ok());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        ArgumentCaptor<Object> sent = ArgumentCaptor.forClass(Object.class);
+        verify(events).publishEvent(sent.capture());
+        assertThat(sent.getValue()).isInstanceOfSatisfying(StreamEvents.PricesUpdated.class, e -> {
+            assertThat(e.ingested()).isEqualTo(1);
+            assertThat(e.at().toInstant()).isEqualTo(THURSDAY_3PM.toInstant());
+        });
+    }
+
+    /** Ca 99% thời gian: không có bản tin mới nên không được làm phiền trình duyệt nào. */
+    @Test
+    void staysSilentWhenNothingIsNew() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void aFailedIngestionIsNotAnnouncedAsNewPrices() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page(link(NEW_URL, 8)));
+        when(ingestion.ingest(NEW_URL)).thenReturn(failed());
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void announcesForecastsWhenSomeWereCreatedOrGraded() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page());
+        when(live.refresh()).thenReturn(new LiveForecastService.RefreshResult(4, 8, 0, 0));
+
+        pollerAt(THURSDAY_3PM).tick();
+
+        ArgumentCaptor<Object> sent = ArgumentCaptor.forClass(Object.class);
+        verify(events).publishEvent(sent.capture());
+        assertThat(sent.getValue()).isInstanceOfSatisfying(StreamEvents.ForecastsUpdated.class, e -> {
+            assertThat(e.created()).isEqualTo(8);
+            assertThat(e.graded()).isEqualTo(4);
+        });
+    }
+
+    /** Một bộ lắng nghe hỏng không được làm hỏng lượt quét đã xong: SSE là phần phụ. */
+    @Test
+    void aFailingListenerDoesNotEscapeTick() throws Exception {
+        when(scraper.fetchListingPage(1)).thenReturn(page(link(NEW_URL, 8)));
+        when(ingestion.ingest(NEW_URL)).thenReturn(ok());
+        org.mockito.Mockito.doThrow(new IllegalStateException("listener lỗi"))
+                .when(events).publishEvent(any(Object.class));
+
+        pollerAt(THURSDAY_3PM).tick();      // không được ném
+
+        verify(live).refresh();             // và các bước sau vẫn chạy
     }
 
     /**
