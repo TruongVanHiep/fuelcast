@@ -51,6 +51,9 @@ phục vụ; biểu đồ nạp thư viện ECharts từ CDN nên cần có mạ
 
 Cơ sở dữ liệu dùng cổng **5433** (không phải 5432) để không đụng PostgreSQL cài sẵn.
 
+Đưa lên máy chủ thật (HTTPS, mật khẩu trong `.env`, DB không mở cổng ra ngoài, sao lưu
+hằng ngày): xem [docs/deploy.md](docs/deploy.md).
+
 **Tự động nạp bản tin mới.** Mặc định tắt, để test và các lệnh chạy một lần không lén
 gọi mạng. Bật khi triển khai bằng `--fuelcast.ingestion.poll.enabled=true`. Hai nhịp:
 mỗi 10 phút trong khung thứ Năm 14:45 đến 17:00 (giờ Việt Nam), thưa hơn (6 giờ) ngoài

@@ -1,0 +1,11 @@
+# {$DOMAIN} được thay bằng biến môi trường DOMAIN (đặt trong .env, truyền vào bởi compose).
+# Chỉ cần dòng tên miền là Caddy tự xin chứng chỉ Let's Encrypt, tự gia hạn, và tự chuyển
+# mọi truy cập HTTP sang HTTPS.
+{$DOMAIN} {
+	# Nén phản hồi JSON và HTML cho nhẹ.
+	encode zstd gzip
+
+	# "app" là tên service trong docker-compose.prod.yml; Docker tự phân giải tên đó
+	# thành địa chỉ của container ứng dụng.
+	reverse_proxy app:8080
+}

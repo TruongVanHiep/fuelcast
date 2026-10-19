@@ -1,0 +1,2 @@
+# Script chạy trên Linux phải giữ dấu xuống dòng LF, kể cả khi checkout trên Windows.
+*.sh text eol=lf
