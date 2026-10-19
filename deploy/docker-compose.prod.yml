@@ -1,0 +1,93 @@
+# Bản chạy THẬT trên máy chủ. Khác docker-compose.yml trong fuelcast-core (dùng khi phát
+# triển trên máy bạn) ở ba điểm:
+#   1. Không có cổng nào của DB hay ứng dụng mở ra ngoài. Chỉ Caddy nghe cổng 80 và 443.
+#   2. Mật khẩu DB và tên miền lấy từ file .env (không commit), không nằm cứng trong file.
+#   3. Có Caddy đứng trước để lo HTTPS.
+#
+# Chạy từ thư mục deploy/:  docker compose -f docker-compose.prod.yml up -d
+
+# Giới hạn log của mỗi container. Mặc định Docker ghi log không giới hạn, đủ lâu thì đầy ổ đĩa.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    # Cùng phiên bản với máy phát triển. Phải giữ y hệt khi khôi phục dữ liệu từ bản dump,
+    # vì TimescaleDB đòi bản cài đặt trùng bản đã tạo ra dump.
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: fuelcast-db
+    environment:
+      POSTGRES_DB: fuelcast
+      POSTGRES_USER: fuelcast
+      # ":?" làm compose báo lỗi ngay nếu .env thiếu biến này, thay vì âm thầm chạy với mật khẩu rỗng.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Hãy đặt POSTGRES_PASSWORD trong file .env}
+      TZ: Asia/Ho_Chi_Minh
+    # Cố ý KHÔNG có "ports:". Chỉ các container trong cùng mạng compose mới nói chuyện được
+    # với DB (qua tên "postgres:5432"). Từ Internet không có đường nào tới nó.
+    volumes:
+      - fuelcast-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fuelcast -d fuelcast"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+  app:
+    build: ../fuelcast-core
+    container_name: fuelcast-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fuelcast
+      SPRING_DATASOURCE_USERNAME: fuelcast
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Hãy đặt POSTGRES_PASSWORD trong file .env}
+      # Chạy nền để tự nạp bản tin mới và chấm điểm dự báo LIVE.
+      FUELCAST_INGESTION_POLL_ENABLED: "true"
+      TZ: Asia/Ho_Chi_Minh
+    # "expose" chỉ báo cho các container khác trong mạng compose biết cổng 8080 (Caddy dùng nó).
+    # Khác với "ports:", nó không mở gì ra máy chủ.
+    expose:
+      - "8080"
+    # Trần bộ nhớ: Dockerfile cho JVM lấy 75% của số này. Một lỗi rò bộ nhớ sẽ chỉ làm
+    # container này khởi động lại, không kéo cả máy chủ (và DB) chết theo.
+    mem_limit: 1g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 5
+    logging: *logging
+
+  caddy:
+    image: caddy:2
+    container_name: fuelcast-caddy
+    depends_on:
+      - app
+    environment:
+      # Caddyfile đọc biến này, xem {$DOMAIN} trong đó.
+      DOMAIN: ${DOMAIN:?Hãy đặt DOMAIN trong file .env}
+    ports:
+      - "80:80"      # HTTP: Caddy dùng để chứng minh với Let's Encrypt rằng bạn sở hữu tên miền
+      - "443:443"    # HTTPS
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Chứng chỉ lấy được nằm ở đây. Mất volume này thì Caddy phải xin lại, mà Let's Encrypt
+      # giới hạn số lần xin mỗi tuần, nên đừng xoá nó khi dựng lại hệ thống.
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  fuelcast-pgdata:
+  caddy-data:
+  caddy-config:
