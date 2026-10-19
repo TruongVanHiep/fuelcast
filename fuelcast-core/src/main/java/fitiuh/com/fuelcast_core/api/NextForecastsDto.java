@@ -18,6 +18,10 @@ public record NextForecastsDto(String notice, List<Item> items) {
      * @param direction         UP, DOWN hoặc FLAT (dưới 1 đồng)
      * @param horizonDays       còn bao nhiêu ngày tới giờ công bố dự kiến lúc tạo dự báo
      * @param createdAt         lúc dự báo được tạo, để biết nó có trước bản tin hay không
+     * @param primary           true cho mô hình chính của hệ thống. Khi có nhiều mô hình
+     *                          chạy song song, mỗi mặt hàng có một dòng cho từng mô hình;
+     *                          giao diện chỉ nêu dòng primary ở chỗ nổi bật và để các dòng
+     *                          còn lại ở trang dự báo chi tiết.
      */
     public record Item(
             String product,
@@ -28,6 +32,7 @@ public record NextForecastsDto(String notice, List<Item> items) {
             String direction,
             int horizonDays,
             String modelVersion,
-            OffsetDateTime createdAt
+            OffsetDateTime createdAt,
+            boolean primary
     ) { }
 }

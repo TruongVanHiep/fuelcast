@@ -32,6 +32,10 @@ services:
       # Chạy nền để tự nạp bản tin mới và chấm điểm dự báo. Mặc định trong
       # application.yaml là tắt, để test và các lệnh chạy một lần không gọi mạng.
       FUELCAST_INGESTION_POLL_ENABLED: "true"
+      # Gọi dịch vụ dự báo Python bên dưới; mô hình của nó chạy song song với mô hình Java.
+      # Không đặt depends_on forecast: nó hỏng thì chỉ mất dòng dự báo của nó.
+      FUELCAST_FORECAST_PYTHON_ENABLED: "true"
+      FUELCAST_FORECAST_PYTHON_URL: http://forecast:8000
       TZ: Asia/Ho_Chi_Minh
     ports:
       - "8080:8080"
@@ -43,6 +47,12 @@ services:
       timeout: 5s
       start_period: 40s
       retries: 5
+
+  # Dịch vụ dự báo Python (fuelcast-forecast). Chỉ ứng dụng gọi nó, nên không mở cổng ra máy.
+  forecast:
+    build: ../fuelcast-forecast
+    container_name: fuelcast-forecast
+    restart: unless-stopped
 
 volumes:
   fuelcast-pgdata:

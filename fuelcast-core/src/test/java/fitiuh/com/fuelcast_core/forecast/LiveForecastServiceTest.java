@@ -26,6 +26,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -54,7 +55,7 @@ class LiveForecastServiceTest {
 
     private final LiveForecastService service = new LiveForecastService(
             products, prices, worldPrices, cycleQuery, cycles, writer,
-            Clock.fixed(NOW.toInstant(), VN));
+            Clock.fixed(NOW.toInstant(), VN), Optional.empty());
 
     private static FuelProduct product(int id, String code) {
         return FuelProduct.builder().id((short) id).code(code).nameVi(code).unit("lít")
@@ -189,6 +190,53 @@ class LiveForecastServiceTest {
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(writer);
         order.verify(writer).gradePendingLive();
         order.verify(writer).insertLive(any());
+    }
+
+    private LiveForecastService withPython(PythonLiveForecast python) {
+        return new LiveForecastService(products, prices, worldPrices, cycleQuery, cycles, writer,
+                Clock.fixed(NOW.toInstant(), VN), Optional.of(python));
+    }
+
+    private static LiveRow pythonRow() {
+        return new LiveRow(900L, (short) 2, NOW, "rule-lgbm-residual-v1", 5,
+                new BigDecimal("28000"), new BigDecimal("12.50"), "UP", "{}", "{}");
+    }
+
+    @Test
+    void alsoWritesThePythonModelsForecastWhenItIsEnabled() {
+        givenLatestAnnouncementIs(LAST);
+        givenSeriesFor(product(2, "RON95"), "MOPS_RON95", PERIODS);
+        PythonLiveForecast python = mock(PythonLiveForecast.class);
+        when(python.buildRow(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(Optional.of(pythonRow()));
+        when(writer.insertLive(any())).thenReturn(true);
+
+        RefreshResult r = withPython(python).refresh();
+
+        assertThat(r.created()).isEqualTo(2);       // một dòng cho mỗi mô hình
+        ArgumentCaptor<LiveRow> rows = ArgumentCaptor.forClass(LiveRow.class);
+        verify(writer, org.mockito.Mockito.times(2)).insertLive(rows.capture());
+        assertThat(rows.getAllValues()).extracting(LiveRow::modelVersion)
+                .containsExactly("lagged-world-ols-v1", "rule-lgbm-residual-v1");
+    }
+
+    /** Dịch vụ Python hỏng không được làm mất dự báo của mô hình Java đang chạy. */
+    @Test
+    void aFailingPythonModelNeverLosesTheJavaForecast() {
+        givenLatestAnnouncementIs(LAST);
+        givenSeriesFor(product(2, "RON95"), "MOPS_RON95", PERIODS);
+        PythonLiveForecast python = mock(PythonLiveForecast.class);
+        when(python.buildRow(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(Optional.empty());
+        when(writer.insertLive(any())).thenReturn(true);
+
+        RefreshResult r = withPython(python).refresh();
+
+        assertThat(r.created()).isEqualTo(1);
+        assertThat(r.skipped()).isEqualTo(1);
+        ArgumentCaptor<LiveRow> row = ArgumentCaptor.forClass(LiveRow.class);
+        verify(writer).insertLive(row.capture());
+        assertThat(row.getValue().modelVersion()).isEqualTo("lagged-world-ols-v1");
     }
 
     @Test

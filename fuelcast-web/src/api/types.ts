@@ -49,6 +49,8 @@ export interface NextForecastItem {
   horizonDays: number
   modelVersion: string
   createdAt: string
+  // true cho mô hình chính; các mô hình chạy song song để so sánh có primary = false.
+  primary: boolean
 }
 
 export interface NextForecasts {

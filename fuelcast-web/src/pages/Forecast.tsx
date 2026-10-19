@@ -1,5 +1,5 @@
 import { getNextForecasts } from '../api/endpoints'
-import { DirectionBadge } from '../components/Badges'
+import { DirectionBadge, Pill } from '../components/Badges'
 import Notice from '../components/Notice'
 import { Async, Card, Empty } from '../components/StateBlocks'
 import { useAsync } from '../hooks/useAsync'
@@ -48,7 +48,9 @@ export default function Forecast() {
                           <td className="tabular py-2 pr-4 text-right">{formatDelta(item.predictedDeltaVnd)} đ</td>
                           <td className="py-2 pr-4"><DirectionBadge direction={item.direction} /></td>
                           <td className="tabular py-2 pr-4 text-right">{item.horizonDays}</td>
-                          <td className="py-2 pr-4 text-muted">{item.modelVersion}</td>
+                          <td className="py-2 pr-4 text-muted">
+                            {item.modelVersion} {item.primary && <Pill tone="neutral">chính</Pill>}
+                          </td>
                           <td className="py-2 whitespace-nowrap">{formatDateTime(item.createdAt)}</td>
                         </tr>
                       ))}
@@ -59,7 +61,8 @@ export default function Forecast() {
             </Card>
             <p className="text-xs text-muted">
               "Còn (ngày)" là số ngày từ lúc tạo dự báo tới giờ công bố dự kiến. Mức đổi tính so
-              với kỳ gần nhất.
+              với kỳ gần nhất. Mỗi mặt hàng có thể có nhiều dòng: mô hình chính, và các mô hình
+              chạy song song chỉ để so sánh trên bảng điểm. Hai mô hình có thể bất đồng về chiều.
             </p>
           </>
         )}

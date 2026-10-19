@@ -26,7 +26,7 @@ bảng điểm của mô hình. Lời cảnh báo REPLAY nằm ngay trên bảng
 | Dự báo LIVE | Dự báo cho kỳ tới được tạo **trước** bản tin, tự chấm điểm khi bản tin ra (`/forecasts/next`) |
 | Lỗi | Theo RFC 7807 (`application/problem+json`) |
 | Giao diện | `fuelcast-web`: React + TypeScript, bốn trang đọc, chế độ sáng/tối, xuất CSV (xem mục *Chạy*) |
-| Dịch vụ dự báo | `fuelcast-forecast`: Python, FastAPI, LightGBM. Chạy độc lập, có test chống leakage; chưa nối vào core |
+| Dịch vụ dự báo | `fuelcast-forecast`: Python, FastAPI, LightGBM, có test chống leakage. Core gọi nó mỗi lượt quét; mô hình của nó chạy song song với mô hình Java và hiện cạnh nhau trên bảng điểm |
 
 ## Chạy
 
@@ -77,6 +77,7 @@ Các việc chạy bằng dòng lệnh (thêm `--spring.main.web-application-typ
 | `--fuelcast.reprocess=true` | Parse lại bản gốc đã lưu, không gọi mạng |
 | `--fuelcast.backtest=true` | In bảng đo độ chính xác |
 | `--fuelcast.forecast.replay=true` | Lưu các dự báo phát lại vào bảng `forecast` |
+| `--fuelcast.forecast.python.enabled=true --fuelcast.forecast.python.replay=true` | Như trên nhưng cho mô hình Python (cần `fuelcast-forecast` đang chạy); ghi horizon 7 |
 
 ## Kiến trúc
 
@@ -187,7 +188,7 @@ repo này. Tôi ghi rõ chỗ khác và lý do, thay vì để người đọc t
 | RabbitMQ | Không dùng | Mọi module chạy chung một tiến trình; broker chỉ thêm chi phí vận hành |
 | Redis (cache, rate-limit) | Không dùng | API chỉ đọc vài trăm dòng, chưa có số đo nào cho thấy cần cache |
 | Quartz | `@Scheduled` với lịch động (`PollSchedule`) | Một tiến trình, một lịch; Quartz đáng dùng khi cần lưu job trong DB hoặc chạy cụm |
-| Dịch vụ Python (FastAPI) với rule engine + LightGBM | `fuelcast-forecast/`: lớp luật (truyền dẫn giá thế giới) cộng LightGBM đoán phần dư, có `/predict` và `/backtest`. Mô hình Java vẫn là mô hình chính; dịch vụ này chạy song song và **core chưa gọi nó** | Xem ngay dưới bảng |
+| Dịch vụ Python (FastAPI) với rule engine + LightGBM | `fuelcast-forecast/`: lớp luật (truyền dẫn giá thế giới) cộng LightGBM đoán phần dư, có `/predict` và `/backtest`. Mô hình Java vẫn là mô hình chính (cờ `primary` trong API); mô hình Python chạy song song, core gọi nó qua HTTP và nếu nó hỏng thì chỉ mất dòng dự báo của nó | Xem ngay dưới bảng |
 | Giá Platts/MOPS trung bình 7 ngày | Giá thế giới trung bình **của kỳ**, đọc từ bản tin MOIT (`MOIT_CYCLE_AVG`) | Không có nguồn MOPS miễn phí; chính phần rủi ro của thiết kế đã dự đoán và dặn ghi rõ hạn chế này |
 | Vùng 1 và vùng 2, tỷ giá Vietcombank, Brent/RBOB, Petrolimex | Chỉ nạp giá vùng 1 từ MOIT (schema đã có chỗ cho vùng 2) | Mô hình hiện chưa dùng những dữ liệu đó; Brent theo ngày mới thử trên lịch sử (xem `docs/data-sources.md`) |
 | React 19 + Vite + Tailwind | `fuelcast-web/`: bốn trang đọc (tổng quan, dự báo, bảng điểm, lịch sử giá). Trang tĩnh trong core vẫn còn để chạy nhanh | Chỉ làm các trang đọc, vì backend chưa có đăng nhập hay cảnh báo |
