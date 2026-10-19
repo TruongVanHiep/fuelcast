@@ -82,6 +82,33 @@ jobs:
       - name: Build the web image
         run: docker build -t fuelcast-web:ci fuelcast-web
 
+      - name: Build the forecast image
+        run: docker build -t fuelcast-forecast:ci fuelcast-forecast
+
+  # Dịch vụ dự báo Python. Chạy trên 3.12, đúng phiên bản của image Docker.
+  forecast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: fuelcast-forecast
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: fuelcast-forecast/requirements-dev.txt
+
+      - name: Install
+        run: pip install -r requirements-dev.txt
+
+      - name: Test
+        run: pytest -q
+
   # Giao diện React: kiểm tra kiểu (tsc nằm trong "npm run build"), lint, và build.
   web:
     runs-on: ubuntu-24.04

@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+# Cho phép "from app..." trong test mà không cần cài thành gói.
+pythonpath = ["."]
+testpaths = ["tests"]

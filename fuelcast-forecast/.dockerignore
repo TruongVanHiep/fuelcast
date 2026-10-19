@@ -1,0 +1,12 @@
+# Không đưa vào ngữ cảnh build: nặng, sinh lại được, hoặc là của riêng máy này.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+scripts/
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+requirements-dev.txt
