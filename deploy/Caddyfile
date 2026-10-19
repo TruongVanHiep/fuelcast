@@ -5,7 +5,7 @@
 	# Nén phản hồi JSON và HTML cho nhẹ.
 	encode zstd gzip
 
-	# "app" là tên service trong docker-compose.prod.yml; Docker tự phân giải tên đó
-	# thành địa chỉ của container ứng dụng.
-	reverse_proxy app:8080
+	# "web" là tên service trong docker-compose.prod.yml; Docker tự phân giải tên đó
+	# thành địa chỉ của container nginx phục vụ giao diện. nginx lại chuyển /api sang ứng dụng.
+	reverse_proxy web:8080
 }

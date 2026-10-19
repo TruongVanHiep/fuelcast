@@ -25,6 +25,7 @@ bảng điểm của mô hình. Lời cảnh báo REPLAY nằm ngay trên bảng
 | Mô hình | Truyền dẫn giá thế giới → giá bán lẻ, đánh giá walk-forward so với "giá không đổi" |
 | Dự báo LIVE | Dự báo cho kỳ tới được tạo **trước** bản tin, tự chấm điểm khi bản tin ra (`/forecasts/next`) |
 | Lỗi | Theo RFC 7807 (`application/problem+json`) |
+| Giao diện | `fuelcast-web`: React + TypeScript, bốn trang đọc, chế độ sáng/tối, xuất CSV (xem mục *Chạy*) |
 
 ## Chạy
 
@@ -46,8 +47,16 @@ docker compose up -d postgres   # chỉ TimescaleDB, cổng 5433 trên máy
 ./mvnw test
 ```
 
-Dashboard là một trang tĩnh (`src/main/resources/static/index.html`) do chính Spring
-phục vụ; biểu đồ nạp thư viện ECharts từ CDN nên cần có mạng để vẽ.
+Có hai giao diện. Trang tĩnh trong `fuelcast-core` (`src/main/resources/static/index.html`)
+do chính Spring phục vụ ở `/` nên chạy ngay cùng ứng dụng; biểu đồ nạp ECharts từ CDN nên
+cần có mạng. Giao diện React ở [`fuelcast-web/`](fuelcast-web) là bản đầy đủ hơn (bốn trang,
+chế độ tối, xuất CSV) và là thứ được triển khai:
+
+```bash
+cd fuelcast-web
+npm install
+npm run dev                     # http://localhost:5173, tự chuyển /api sang cổng 8080
+```
 
 Cơ sở dữ liệu dùng cổng **5433** (không phải 5432) để không đụng PostgreSQL cài sẵn.
 
@@ -180,7 +189,7 @@ repo này. Tôi ghi rõ chỗ khác và lý do, thay vì để người đọc t
 | Dịch vụ Python (FastAPI) với rule engine + LightGBM | Mô hình hồi quy OLS walk-forward viết bằng Java, nằm trong `fuelcast-core` | Xem ngay dưới bảng |
 | Giá Platts/MOPS trung bình 7 ngày | Giá thế giới trung bình **của kỳ**, đọc từ bản tin MOIT (`MOIT_CYCLE_AVG`) | Không có nguồn MOPS miễn phí; chính phần rủi ro của thiết kế đã dự đoán và dặn ghi rõ hạn chế này |
 | Vùng 1 và vùng 2, tỷ giá Vietcombank, Brent/RBOB, Petrolimex | Chỉ nạp giá vùng 1 từ MOIT (schema đã có chỗ cho vùng 2) | Mô hình hiện chưa dùng những dữ liệu đó; Brent theo ngày mới thử trên lịch sử (xem `docs/data-sources.md`) |
-| React 19 + Vite + Tailwind | Một trang tĩnh do Spring phục vụ, biểu đồ bằng ECharts | Không có bước build riêng, một image duy nhất; đủ cho 4 khối thông tin |
+| React 19 + Vite + Tailwind | `fuelcast-web/`: bốn trang đọc (tổng quan, dự báo, bảng điểm, lịch sử giá). Trang tĩnh trong core vẫn còn để chạy nhanh | Chỉ làm các trang đọc, vì backend chưa có đăng nhập hay cảnh báo |
 | SSE, JWT + refresh, trang cảnh báo Email/Telegram, bảng xếp hạng người và mô hình | Không có | API chỉ có 5 endpoint GET công khai và không lưu dữ liệu người dùng nên không có gì để bảo vệ; cảnh báo cần token bot bên thứ ba |
 | Actuator, Prometheus, Grafana, Loki, Tempo | Không có; chỉ log container và healthcheck | Chưa làm |
 | Nginx | Caddy (`deploy/`) | Tự lấy và gia hạn HTTPS, cấu hình 3 dòng |

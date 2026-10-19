@@ -66,11 +66,24 @@ services:
       retries: 5
     logging: *logging
 
+  # Giao diện React đã build, do nginx phục vụ. nginx cũng chuyển mọi đường dẫn /api sang
+  # service "app" (xem fuelcast-web/nginx.conf), nên bên ngoài chỉ có một địa chỉ duy nhất.
+  web:
+    build: ../fuelcast-web
+    container_name: fuelcast-web
+    depends_on:
+      - app
+    expose:
+      - "8080"
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: *logging
+
   caddy:
     image: caddy:2
     container_name: fuelcast-caddy
     depends_on:
-      - app
+      - web
     environment:
       # Caddyfile đọc biến này, xem {$DOMAIN} trong đó.
       DOMAIN: ${DOMAIN:?Hãy đặt DOMAIN trong file .env}

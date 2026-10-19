@@ -1,0 +1,8 @@
+# Không đưa vào ngữ cảnh build: nặng, sinh lại được, hoặc là của riêng máy này.
+node_modules/
+dist/
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+*.log

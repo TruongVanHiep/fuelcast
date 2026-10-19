@@ -78,3 +78,34 @@ jobs:
 
       - name: Build the application image
         run: docker build -t fuelcast-core:ci fuelcast-core
+
+      - name: Build the web image
+        run: docker build -t fuelcast-web:ci fuelcast-web
+
+  # Giao diện React: kiểm tra kiểu (tsc nằm trong "npm run build"), lint, và build.
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: fuelcast-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: fuelcast-web/package-lock.json
+
+      # "npm ci" cài đúng phiên bản trong package-lock.json và lỗi nếu lock lệch package.json.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check and build
+        run: npm run build
