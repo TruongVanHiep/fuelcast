@@ -5,8 +5,8 @@ Dịch vụ dự báo của FuelCast: Python, FastAPI, LightGBM. Không giữ tr
 trả kết quả. Dữ liệu chỉ vài chục đến vài trăm dòng nên mỗi lần huấn luyện mất cỡ vài chục mili
 giây, và không có "mô hình đã lưu" nào có thể lỗi thời so với dữ liệu.
 
-**Trạng thái:** chạy độc lập, có test; `fuelcast-core` chưa gọi nó. Mô hình Java vẫn là mô hình
-chính của hệ thống.
+**Trạng thái:** đã nối vào `fuelcast-core` (xem mục *Tích hợp*). Mô hình Java vẫn là mô hình
+chính của hệ thống; mô hình Python chạy song song để so sánh.
 
 ## Mô hình
 
@@ -57,6 +57,28 @@ uvicorn app.api:app --port 8000   # http://localhost:8000/docs
 ```
 
 Hoặc bằng Docker: `docker build -t fuelcast-forecast .` rồi `docker run -p 8000:8000 fuelcast-forecast`.
+
+## Tích hợp với fuelcast-core
+
+Bật bằng `fuelcast.forecast.python.enabled=true` (mặc định tắt, để test và các lệnh chạy một lần
+không đòi một dịch vụ thứ hai) và `fuelcast.forecast.python.url`. Trong `docker compose` cả hai
+đã được đặt sẵn, địa chỉ là `http://forecast:8000`.
+
+- **Dự báo LIVE.** Sau mỗi lượt quét, core gửi chuỗi kỳ của từng mặt hàng tới `/predict` và ghi kết
+  quả vào cùng bảng `forecast` với `model_version = rule-lgbm-residual-v1`. Chuỗi kỳ là chính
+  chuỗi mà mô hình Java dùng (`BacktestService.alignPeriods`), nên hai mô hình học trên cùng
+  tập dữ liệu. Bản tin ra thì cả hai được chấm bằng cùng một bản tin.
+- **Dự báo REPLAY.** `--fuelcast.forecast.python.replay=true` gọi `/backtest` ở chế độ `lagged`
+  và ghi từng lần đoán lịch sử với **horizon 7**: giá thế giới của kỳ trước chỉ đầy đủ vào lúc
+  công bố kỳ trước, tức khoảng một kỳ (7 ngày) trước lần công bố đang đoán. Horizon 0 dành
+  riêng cho "giá thế giới cùng kỳ" của mô hình Java; ghi 0 ở đây sẽ gắn nhãn sai thành giải thích.
+- **Chịu lỗi.** Dịch vụ này hỏng, chậm hay tắt thì core chỉ mất dòng dự báo của nó: mô hình Java
+  luôn được ghi trước và không bị ảnh hưởng. Mã `422` (chưa đủ dữ liệu) được coi là "không dự
+  báo", còn lỗi mạng và `5xx` được ghi cảnh báo thay vì nuốt im lặng.
+- **Hiển thị.** `/api/v1/forecasts/next` trả một dòng cho mỗi (mặt hàng, mô hình) và đánh dấu
+  `primary` cho mô hình chính; tổng quan chỉ nêu mô hình chính, trang Dự báo nêu cả hai. Hai mô
+  hình có thể bất đồng về chiều: ngày 19/10/2026, với kỳ 22/10, E5RON92 và RON95 được mô hình Java
+  dự báo giảm còn mô hình Python dự báo tăng.
 
 ## Kiểm thử
 

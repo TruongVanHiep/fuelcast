@@ -41,13 +41,15 @@ export default function Dashboard() {
 
         <Card title="Dự báo cho kỳ tới">
           <Async state={forecasts.state} onRetry={forecasts.reload}>
-            {(f) =>
-              f.items.length === 0 ? (
+            {(f) => {
+              // Tổng quan chỉ nêu mô hình chính; các mô hình chạy song song ở trang Dự báo.
+              const main = f.items.filter((item) => item.primary)
+              return main.length === 0 ? (
                 <Empty>Chưa có dự báo cho kỳ tới.</Empty>
               ) : (
                 <div className="space-y-3">
                   <ul className="divide-y divide-border">
-                    {f.items.map((item) => (
+                    {main.map((item) => (
                       <li key={item.product} className="flex items-center justify-between gap-3 py-2 text-sm">
                         <span>{item.name}</span>
                         <span className="flex items-center gap-3">
@@ -63,7 +65,7 @@ export default function Dashboard() {
                   </Link>
                 </div>
               )
-            }
+            }}
           </Async>
         </Card>
       </div>

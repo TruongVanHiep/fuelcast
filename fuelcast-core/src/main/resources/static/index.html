@@ -283,7 +283,9 @@
       box.replaceChildren(el('p', { class: 'muted' }, 'Chưa có dự báo cho kỳ tới.'));
       return;
     }
-    box.replaceChildren(...n.items.map(f => {
+    // Khi có nhiều mô hình chạy song song, thẻ nổi bật chỉ nêu mô hình chính; các mô hình
+    // còn lại nằm ở giao diện đầy đủ (fuelcast-web).
+    box.replaceChildren(...n.items.filter(f => f.primary).map(f => {
       const delta = formatDelta(f.predictedDeltaVnd);
       return el('div', { class: 'card' },
         el('h3', null, f.name),
@@ -451,12 +453,9 @@
     notice.textContent = sc.notice;
     notice.hidden = !sc.notice;
 
-    // Mỗi loại dự báo chỉ giữ phiên bản mô hình mới nhất; các phiên bản cũ là lịch sử.
-    const latest = {};
-    for (const r of sc.rows) {
-      if (!latest[r.kind] || r.modelVersion > latest[r.kind]) latest[r.kind] = r.modelVersion;
-    }
-    const rows = sc.rows.filter(r => r.modelVersion === latest[r.kind]);
+    // Phiên bản mô hình đã bị thay thế do backend loại; các mô hình còn lại hiện cạnh nhau,
+    // mỗi dòng ghi rõ mô hình nào.
+    const rows = sc.rows;
     const table = document.getElementById('scorecard');
 
     if (rows.length === 0) {
@@ -491,7 +490,7 @@
                    Math.abs(r.improvementPct).toFixed(1) + '%';
 
       return el('tr', null,
-        el('td', null, r.name),
+        el('td', null, r.name, ' ', el('span', { class: 'muted small' }, r.modelVersion)),
         el('td', null, el('span', {
           class: 'badge warn',
           title: r.horizonDays === 0

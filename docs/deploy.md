@@ -5,7 +5,7 @@ cấu hình nằm trong [`deploy/`](../deploy):
 
 | File | Việc nó làm |
 |---|---|
-| `docker-compose.prod.yml` | Dựng DB, ứng dụng, giao diện web (nginx) và Caddy. Chỉ Caddy mở cổng ra ngoài |
+| `docker-compose.prod.yml` | Dựng DB, ứng dụng, dịch vụ dự báo Python, giao diện web (nginx) và Caddy. Chỉ Caddy mở cổng ra ngoài |
 | `Caddyfile` | Caddy nhận HTTPS, chuyển vào nginx của giao diện (nginx chuyển tiếp `/api` sang ứng dụng), tự lấy chứng chỉ |
 | `.env.example` | Mẫu cho `.env` (tên miền, mật khẩu DB) |
 | `backup.sh` | `pg_dump` hằng ngày, giữ 14 bản |

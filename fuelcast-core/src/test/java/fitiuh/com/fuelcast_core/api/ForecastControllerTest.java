@@ -31,7 +31,7 @@ class ForecastControllerTest {
                 "Dự báo LIVE chưa hơn đường cơ sở.",
                 List.of(new NextForecastsDto.Item("RON95", "Xăng RON95-III", "lít",
                         28300, 46, "UP", 5, "lagged-world-ols-v1",
-                        OffsetDateTime.of(2026, 10, 10, 9, 0, 0, 0, ZoneOffset.UTC)))));
+                        OffsetDateTime.of(2026, 10, 10, 9, 0, 0, 0, ZoneOffset.UTC), true))));
 
         mockMvc.perform(get("/api/v1/forecasts/next"))
                 .andExpect(status().isOk())
@@ -41,6 +41,7 @@ class ForecastControllerTest {
                 .andExpect(jsonPath("$.items[0].predictedVnd").value(28300))
                 .andExpect(jsonPath("$.items[0].direction").value("UP"))
                 .andExpect(jsonPath("$.items[0].horizonDays").value(5))
+                .andExpect(jsonPath("$.items[0].primary").value(true))
                 .andExpect(jsonPath("$.items[0].createdAt").value("2026-10-10T16:00:00+07:00"));
     }
 

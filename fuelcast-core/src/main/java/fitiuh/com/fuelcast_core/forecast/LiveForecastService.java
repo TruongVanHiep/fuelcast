@@ -64,8 +64,14 @@ public class LiveForecastService {
     AdjustmentCycleService cycles;
     ForecastWriter writer;
     Clock clock;
+    /** Có khi bật fuelcast.forecast.python.enabled: mô hình Python dự báo song song. */
+    Optional<PythonLiveForecast> pythonLive;
 
-    /** graded: dự báo cũ vừa được chấm; created: dự báo mới; existing: đã có sẵn; skipped: không dự báo được. */
+    /**
+     * graded: dự báo cũ vừa được chấm; created: dự báo mới; existing: đã có sẵn; skipped:
+     * không dự báo được. Đếm theo từng (mặt hàng, mô hình): khi mô hình Python bật thì mỗi
+     * mặt hàng có hai dòng.
+     */
     public record RefreshResult(int graded, int created, int existing, int skipped) { }
 
     /**
@@ -87,33 +93,42 @@ public class LiveForecastService {
         OffsetDateTime now = OffsetDateTime.now(clock);
         int horizonDays = (int) Math.max(0, Duration.between(now, cycle.expectedNextAt()).toDays());
 
-        int created = 0;
-        int existing = 0;
-        int skipped = 0;
+        int[] tally = new int[3];       // 0: created, 1: existing, 2: skipped
         for (FuelProduct product : products.findAll()) {
-            Optional<LiveRow> row = buildRow(product, cycle, open, now, horizonDays);
-            if (row.isEmpty()) {
-                skipped++;
-            } else if (writer.insertLive(row.get())) {
-                created++;
-            } else {
-                existing++;
+            Optional<List<Period>> periods = periodsFor(product);
+            if (periods.isEmpty()) {
+                tally[2]++;             // mặt hàng không có mã giá thế giới tương ứng
+                continue;
             }
+            record(predict(periods.get(), cycle.lastEffectiveAt())
+                    .map(p -> toRow(p, product, open, now, horizonDays)), tally);
+            // Mô hình Python chạy SAU mô hình Java và không bao giờ làm hỏng nó: lỗi của dịch
+            // vụ Python được bắt ngay trong PythonLiveForecast và chỉ làm mất dòng của nó.
+            pythonLive.ifPresent(py -> record(
+                    py.buildRow(periods.get(), product, cycle, open, now, horizonDays), tally));
         }
-        return new RefreshResult(graded, created, existing, skipped);
+        return new RefreshResult(graded, tally[0], tally[1], tally[2]);
     }
 
-    private Optional<LiveRow> buildRow(FuelProduct product, CurrentCycleDto cycle, AdjustmentCycle open,
-                                       OffsetDateTime now, int horizonDays) {
+    private void record(Optional<LiveRow> row, int[] tally) {
+        if (row.isEmpty()) {
+            tally[2]++;
+        } else if (writer.insertLive(row.get())) {
+            tally[0]++;
+        } else {
+            tally[1]++;
+        }
+    }
+
+    /** Chuỗi kỳ đã ghép của mặt hàng; rỗng (Optional) nếu mặt hàng không có mã giá thế giới. */
+    private Optional<List<Period>> periodsFor(FuelProduct product) {
         Optional<String> symbol = WorldSymbols.forProduct(product.getCode());
         if (symbol.isEmpty()) {
             return Optional.empty();
         }
         List<RetailPrice> retail = prices.findHistory(product.getId(), EARLIEST, LATEST);
         List<WorldPrice> world = worldPrices.findByIdSymbolOrderByIdObservedAtAsc(symbol.get());
-
-        return predict(BacktestService.alignPeriods(retail, world), cycle.lastEffectiveAt())
-                .map(p -> toRow(p, product, open, now, horizonDays));
+        return Optional.of(BacktestService.alignPeriods(retail, world));
     }
 
     /** Kết quả của việc học và đoán, kèm những gì đã dùng. */

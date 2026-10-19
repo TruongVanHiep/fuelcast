@@ -49,6 +49,11 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Hãy đặt POSTGRES_PASSWORD trong file .env}
       # Chạy nền để tự nạp bản tin mới và chấm điểm dự báo LIVE.
       FUELCAST_INGESTION_POLL_ENABLED: "true"
+      # Gọi dịch vụ dự báo Python; mô hình của nó chạy song song với mô hình Java. Cố ý KHÔNG
+      # đặt depends_on forecast: dịch vụ đó hỏng chỉ làm mất dòng dự báo của nó, ứng dụng và
+      # mô hình Java vẫn chạy.
+      FUELCAST_FORECAST_PYTHON_ENABLED: "true"
+      FUELCAST_FORECAST_PYTHON_URL: http://forecast:8000
       TZ: Asia/Ho_Chi_Minh
     # "expose" chỉ báo cho các container khác trong mạng compose biết cổng 8080 (Caddy dùng nó).
     # Khác với "ports:", nó không mở gì ra máy chủ.
@@ -64,6 +69,16 @@ services:
       timeout: 5s
       start_period: 40s
       retries: 5
+    logging: *logging
+
+  # Dịch vụ dự báo Python. Chỉ ứng dụng (service "app") gọi nó qua mạng nội bộ; không có "ports:".
+  forecast:
+    build: ../fuelcast-forecast
+    container_name: fuelcast-forecast
+    expose:
+      - "8000"
+    mem_limit: 384m
+    restart: unless-stopped
     logging: *logging
 
   # Giao diện React đã build, do nginx phục vụ. nginx cũng chuyển mọi đường dẫn /api sang
