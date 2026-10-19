@@ -1,0 +1,25 @@
+global:
+  # Mỗi 15 giây hỏi ứng dụng một lần. Bản tin đổi mỗi tuần nên không cần dày hơn; số đo của
+  # JVM và HTTP thì 15 giây là đủ để thấy xu hướng.
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Luật cảnh báo nằm ở file riêng để kiểm thử được bằng `promtool test rules` (xem alerts.test.yml).
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: fuelcast-core
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # "app" là tên service trong docker compose; 8081 là cổng quản trị riêng của Spring, không
+      # mở ra máy chủ hay Internet (xem management.server.port trong application.yaml).
+      - targets: ["app:8081"]
+
+  # Prometheus tự giám sát chính nó: biết được khi nó quét lỗi hoặc đầy ổ đĩa.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Khi chạy ứng dụng từ IntelliJ thay vì trong docker, thay target của fuelcast-core bằng
+  # "host.docker.internal:8081" để container Prometheus với tới được ứng dụng trên máy bạn.

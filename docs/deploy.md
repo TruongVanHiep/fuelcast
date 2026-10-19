@@ -5,7 +5,7 @@ cấu hình nằm trong [`deploy/`](../deploy):
 
 | File | Việc nó làm |
 |---|---|
-| `docker-compose.prod.yml` | Dựng DB, ứng dụng, dịch vụ dự báo Python, giao diện web (nginx) và Caddy. Chỉ Caddy mở cổng ra ngoài |
+| `docker-compose.prod.yml` | Dựng DB, ứng dụng, dịch vụ dự báo Python, giao diện web (nginx), Caddy, Prometheus và Grafana. Chỉ Caddy mở cổng ra ngoài; Prometheus và Grafana chỉ nghe ở 127.0.0.1 (xem [observability.md](observability.md)) |
 | `Caddyfile` | Caddy nhận HTTPS, chuyển vào nginx của giao diện (nginx chuyển tiếp `/api` sang ứng dụng), tự lấy chứng chỉ |
 | `.env.example` | Mẫu cho `.env` (tên miền, mật khẩu DB) |
 | `backup.sh` | `pg_dump` hằng ngày, giữ 14 bản |
@@ -65,8 +65,8 @@ cp .env.example .env
 nano .env
 ```
 
-Điền `DOMAIN` (tên miền ở bước 2, không có `https://`) và `POSTGRES_PASSWORD` (tạo bằng
-`openssl rand -base64 24`). Rút ngắn các lệnh sau bằng cách khai báo file compose một lần
+Điền `DOMAIN` (tên miền ở bước 2, không có `https://`), `POSTGRES_PASSWORD` và
+`GRAFANA_ADMIN_PASSWORD` (tạo mỗi mật khẩu bằng `openssl rand -base64 24`). Rút ngắn các lệnh sau bằng cách khai báo file compose một lần
 cho cả phiên làm việc:
 
 ```bash

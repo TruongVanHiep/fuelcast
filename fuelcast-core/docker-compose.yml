@@ -54,5 +54,50 @@ services:
     container_name: fuelcast-forecast
     restart: unless-stopped
 
+  # ── Giám sát (tuỳ chọn, tốn thêm cỡ 300 đến 500 MB RAM) ─────────────────────────────────
+  # Bật:  docker compose --profile observability up -d
+  # Prometheus ở http://localhost:9090, Grafana ở http://localhost:3000 (tài khoản admin, mật khẩu
+  # lấy từ biến GRAFANA_ADMIN_PASSWORD, mặc định "admin" chỉ cho máy phát triển). Cả hai chỉ nghe
+  # ở 127.0.0.1: không mở ra mạng. Xem docs/observability.md.
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.13.4
+    container_name: fuelcast-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:12.4.13
+    container_name: fuelcast-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/fuelcast.json
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   fuelcast-pgdata:
+  prometheus-data:
+  grafana-data:

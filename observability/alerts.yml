@@ -1,0 +1,51 @@
+# Luật cảnh báo. Prometheus đánh giá chúng và hiện ở trang /alerts của nó; Grafana đếm chúng qua
+# chuỗi ALERTS. Chưa có kênh gửi thông báo (email, Telegram): làm việc đó cần Alertmanager cộng
+# một token bot, xem docs/observability.md.
+#
+# Mọi luật đều có `for`: điều kiện phải đúng liên tục chừng đó thời gian mới kêu, để một lần
+# khởi động lại hay một lần lỗi mạng thoáng qua không đánh thức ai.
+groups:
+  - name: fuelcast
+    rules:
+      - alert: FuelcastDown
+        expr: up{job="fuelcast-core"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ứng dụng FuelCast không trả lời Prometheus"
+          description: "Prometheus không quét được fuelcast-core trong hơn 2 phút."
+
+      # Bản tin điều hành giá ra mỗi tuần (thứ Năm), lệch ngày khoảng 6% số kỳ. 8 ngày không có bản
+      # tin nghĩa là một kỳ đã bị lỡ: MOIT chưa đăng, đổi bố cục khiến parser không đọc được, hoặc
+      # bộ quét hỏng. Đo bằng thời điểm bản tin có hiệu lực nên khởi động lại không ảnh hưởng.
+      - alert: NoNewBulletin
+        expr: time() - fuelcast_bulletin_last_effective_timestamp_seconds > 8 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Đã hơn 8 ngày không có bản tin điều hành giá mới"
+          description: "Bản tin mới nhất có hiệu lực cách đây {{ $value | humanizeDuration }}."
+
+      # Ngoài khung chiều thứ Năm, bộ quét hỏi mỗi 6 giờ; 13 giờ không có lượt thành công nào nghĩa
+      # là đã lỡ ít nhất hai lượt liên tiếp. Số đo bằng 0 cho tới lượt quét đầu tiên sau khi khởi
+      # động (khoảng 30 giây), nên `for` phải dài hơn khoảng đó.
+      - alert: PollerStalled
+        expr: time() - fuelcast_poll_last_success_timestamp_seconds > 13 * 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bộ quét MOIT không có lượt thành công nào trong hơn 13 giờ"
+          description: "Lượt quét thành công gần nhất cách đây {{ $value | humanizeDuration }}."
+
+      # Bản tin MOIT mà parser không đọc được đáng lo hơn lỗi mạng: thường là trang nguồn đổi bố cục
+      # và cần sửa parser. Bản gốc đã được lưu nên sửa xong có thể nạp lại bằng --fuelcast.reprocess.
+      - alert: BulletinParseFailing
+        expr: increase(fuelcast_bulletins_failed_total[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Có bản tin MOIT không đọc được"
+          description: "Trong 1 giờ qua có {{ $value | printf \"%.0f\" }} lần nạp bản tin thất bại."
